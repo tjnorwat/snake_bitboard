@@ -21,6 +21,7 @@ struct Game {
     uint128_t last_column;
     uint128_t first_row;
     uint128_t out_of_bounds;
+    std::vector<uint32_t> food_choices;
 
     Game(uint16_t size);
     void step(uint16_t action);
@@ -52,8 +53,8 @@ Game::Game(uint16_t size) : size(size), done(false), score(0), health(100) {
 
     body_list = std::deque<uint16_t>({starting_idx});
 
-    snake_body_board = 0;
-    food_board = 0;
+    snake_body_board = uint128_t(0);
+    food_board = uint128_t(0);
 
     get_food();
 }
@@ -86,7 +87,7 @@ void Game::step(uint16_t action) {
 
     uint16_t idx = (boost::multiprecision::lsb(new_head));
     // std::cout << "index of new head" << idx << std::endl;
-    body_list.push_back(idx);
+    body_list.push_front(idx);
 
     snake_body_board |= snake_head_board;
 
@@ -99,8 +100,8 @@ void Game::step(uint16_t action) {
         score++;
     } else {
         health--;
-        uint16_t idx_to_remove = body_list.front();
-        body_list.pop_front();
+        uint16_t idx_to_remove = body_list.back();
+        body_list.pop_back();
         snake_body_board ^= uint128_t(1) << idx_to_remove;
     }
 
@@ -115,12 +116,20 @@ void Game::step(uint16_t action) {
     } else if (health <= 0) {
     done = true;
     }
+    
+    
+    // done = (new_head & snake_body_board) | (old_head & first_column & (action == 0)) | (old_head & last_column & (action == 1)) | (old_head & first_row & (action == 2)) | (health <= 0);
+
+    // uint128_t check_done = (new_head & snake_body_board) | (old_head & first_column & (action == 0)) | (old_head & last_column & (action == 1)) | (old_head & first_row & (action == 2));
+    // done = (check_done != 0) || (health <= 0);
+
+
 }
 
 void Game::get_food() {
     uint128_t all_boards = (~(snake_body_board | snake_head_board)) ^ out_of_bounds;
-    std::vector<uint32_t> food_choices;
     
+    food_choices.clear();
     // if all the spots are taken up, we can't put any food down 
     if (!all_boards) {
         food_board = uint128_t(0);
@@ -147,7 +156,7 @@ void Game::reset() {
     score = 0;
     done = false;
     health = 100;
-    snake_body_board = 0;
+    snake_body_board = uint128_t(0);
     body_list.clear();
     body_list.push_back(starting_idx);
 }
