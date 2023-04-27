@@ -4,8 +4,32 @@
 #include <cstdint>
 #include <iostream>
 #include "veque.hpp"
+#include "devector.hpp"
 
 using namespace std;
+
+// worse than veque 
+void devectors(uint16_t times) {
+    rdsl::devector<uint16_t> veq = rdsl::devector<uint16_t>(5,0);
+
+    for (uint16_t i = 1; i < times; i++) {
+        veq.push_back(i);
+        uint16_t idx_to_remove = veq.front();
+        veq.pop_front();
+    }
+}
+
+// doesnt work ? 
+// void devectors_front(uint16_t times) {
+//     rdsl::devector<uint16_t> veq = rdsl::devector<uint16_t>(5,0);
+
+//     for (uint16_t i = 1; i < times; i++) {
+//         veq.push_front(i);
+//         uint16_t idx_to_remove = veq.back();
+//         veq.pop_back();
+//     }
+// }
+
 
 void veques(uint16_t times) { 
     veque::veque<uint16_t> veq = veque::veque<uint16_t>(5, 0);
@@ -166,14 +190,14 @@ int main() {
     chrono::time_point<chrono::high_resolution_clock> start, end;
 
     start = chrono::high_resolution_clock::now();
-    queues_front(times);
+    queues_eating(times);
     end = chrono::high_resolution_clock::now();
     double elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
     cout << "Array time nanoseconds: " << elapsed_time << endl;
     cout << fixed << "Array time seconds: " << elapsed_time / 1e9 << endl;
 
     start = chrono::high_resolution_clock::now();
-    queues_inplace(times);
+    veques_front_eating(times);
     end = chrono::high_resolution_clock::now();
     elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
     cout << "Queue time nanoseconds: " << elapsed_time << endl;
@@ -181,3 +205,5 @@ int main() {
 
     return 0;
 }
+
+// veque still wins both 

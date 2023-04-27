@@ -21,6 +21,7 @@ enum Direction {
 
 struct Player {
     int16_t health;
+    uint16_t length;
     Direction direction;
     deque<uint16_t> body_list;
     uint128_t old_head_board;
@@ -34,6 +35,7 @@ struct Player {
 
     Player(uint16_t starting_idx) {
         this->health = 100;
+        this->length = 3;
         this->direction = UP;
         this->done = false;
         this->just_ate_apple = false;
@@ -49,7 +51,6 @@ struct Player {
         this->snake_body_board |= this->snake_head_board;
         this->old_head_board = this->snake_head_board;
         this->snake_head_board = new_head;
-        this->health--;
         int dir = idx - boost::multiprecision::lsb(this->old_head_board);
 
         switch (dir) {
@@ -154,6 +155,7 @@ struct Game {
     void update_food(Player &player, uint128_t &food_board, uint16_t turns) {
         if (player.snake_head_board & food_board) {
             player.health = 100;
+            player.length++;
             food_board ^= player.snake_head_board; // removing food 
             if (!player.just_ate_apple) {
                 
@@ -166,6 +168,7 @@ struct Game {
             player.just_ate_apple = true;
         }
         else {
+            player.health--;
             // if we just ate apple, dont pop back 
             if (player.just_ate_apple) {
                 player.just_ate_apple = false;
@@ -221,11 +224,11 @@ struct Game {
 
         // if either runs into others head, check which would win 
         if (me.snake_head_board & opponent.snake_head_board){
-            if (me.body_list.size() > opponent.body_list.size()) {
+            if (me.length > opponent.length) {
                 opponent.done = true;
                 return;
             }
-            else if (me.body_list.size() < opponent.body_list.size()) {
+            else if (me.length < opponent.length) {
                 me.done = true;
                 return;
             }
