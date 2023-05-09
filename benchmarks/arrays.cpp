@@ -50,6 +50,18 @@ void veques_front(uint16_t times) {
     }
 }
 
+void veques_front_resize(uint16_t times) { 
+    veque::veque<uint16_t> veq = veque::veque<uint16_t>(5, 0);
+    uint16_t length = 5;
+    for (uint16_t i = 1; i < times; i++) {
+        length++;
+        veq.reserve_front(1);
+        veq.push_front(i);
+        uint16_t idx_to_remove = veq.pop_back_element();
+    }
+}
+
+
 
 // seems to beat out deques 
 void veques_front_eating(uint16_t times) {
@@ -92,7 +104,7 @@ void queues(uint16_t times) {
 void queues_front(uint16_t times) {
     // try with different sizes 
     deque<uint16_t> list = deque<uint16_t>(5, 0);
-
+    
     for (uint16_t i = 1; i < times; i++) {
         list.push_back(i);
         uint16_t idx_to_remove = list.front();
@@ -188,20 +200,22 @@ int main() {
     uint16_t times = 65534;
 
     chrono::time_point<chrono::high_resolution_clock> start, end;
+    double elapsed_time;
+
 
     start = chrono::high_resolution_clock::now();
-    queues_eating(times);
+    veques_front_resize(times);
     end = chrono::high_resolution_clock::now();
-    double elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
+    elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
     cout << "Array time nanoseconds: " << elapsed_time << endl;
     cout << fixed << "Array time seconds: " << elapsed_time / 1e9 << endl;
 
-    start = chrono::high_resolution_clock::now();
-    veques_front_eating(times);
-    end = chrono::high_resolution_clock::now();
-    elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
-    cout << "Queue time nanoseconds: " << elapsed_time << endl;
-    cout << fixed << "Queue time seconds: " << elapsed_time / 1e9 << endl;
+    // start = chrono::high_resolution_clock::now();
+    // veques_front(times);
+    // end = chrono::high_resolution_clock::now();
+    // elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
+    // cout << "Queue time nanoseconds: " << elapsed_time << endl;
+    // cout << fixed << "Queue time seconds: " << elapsed_time / 1e9 << endl;
 
     return 0;
 }
