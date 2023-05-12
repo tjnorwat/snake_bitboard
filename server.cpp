@@ -11,6 +11,8 @@
 using namespace std;
 using boost::multiprecision::uint128_t;
 
+uint32_t const hash_size = 4294967295; // 2^32 - 1
+
 
 enum Direction {
     LEFT,
@@ -18,6 +20,69 @@ enum Direction {
     UP,
     DOWN
 };
+
+enum Hash_Flag {
+    EXACT,
+    ALPHA,
+    BETA
+};
+
+
+struct tt {
+    uint64_t hash_key;
+    Hash_Flag flag;
+    int depth;
+    int value;
+};
+
+
+// struct hash {
+//     uint64_t hash_key;
+//     // me, opponent, food
+//     uint64_t marker_keys[3][121];
+//     tt hash_table[hash_size];
+
+//     hash() {
+//         this->hash_key = 0;
+//     }
+
+//     void init_random_keys() {
+//         random_device rd;
+//         mt19937_64 gen(rd());
+//         uniform_int_distribution<uint64_t> dis;
+
+//         for (int i = 0; i < 3; i++) {
+//             for (int j = 0; j < 121; j++) {
+//                 this->marker_keys[i][j] = dis(gen);
+//             }
+//         }
+//     }
+    
+//     // for starting position 
+//     uint64_t generate_hash_key(Player me, Player opponent, uint128_t food_board) {
+
+//     }
+
+
+//     void clear_hash_table() {
+//         for (int i = 0; i < hash_size; i++) {
+//             hash_table[i].hash_key = 0ULL;
+//             hash_table[i].flag = EXACT;
+//             hash_table[i].depth = 0;
+//             hash_table[i].value = 0;
+//         }
+//     }
+
+
+//     void write_hash_entry(Hash_Flag flag, int depth, int value) {
+//         tt *hash_entry = &hash_table[hash_key & hash_size];
+
+//         hash_entry->hash_key = hash_key;
+//     }
+
+
+// };
+
 
 
 struct Player {
@@ -45,6 +110,9 @@ struct Player {
         this->old_head_board = uint128_t(0);
         this->snake_body_board = uint128_t(0);
     }
+
+
+    // implement direction 2darray instead of switch
 
     void step_by_index(uint16_t idx) {
         uint128_t new_head = uint128_t(1) << idx;
@@ -278,7 +346,7 @@ struct Game {
         return score;
     }
 
-    int minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, int &nodes_visited, bool is_maximizing) {
+    int minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, bool is_maximizing) {
 
         if (me.done && opponent.done) {
             return -1000 + depth;
@@ -303,7 +371,7 @@ struct Game {
                 temp_me.step_by_index(my_move);
                 update_food(temp_me, temp_food, 0);
                 
-                int score = minimax(temp_me, opponent, food_board, depth, alpha, beta, nodes_visited, false);
+                int score = minimax(temp_me, opponent, food_board, depth, alpha, beta, false);
                 best_score = max(best_score, score);
                 alpha = max(alpha, best_score);
                 // if (alpha >= beta) {
@@ -331,7 +399,7 @@ struct Game {
                 }
                 // nodes_visited++;
 
-                int score = minimax(temp_me, temp_opponent, temp_food, depth - 1, alpha, beta, nodes_visited, true);
+                int score = minimax(temp_me, temp_opponent, temp_food, depth - 1, alpha, beta, true);
                 // cout << "score: " << score << endl;
                 // print_board(temp_me, temp_opponent, temp_food);
 
@@ -353,7 +421,8 @@ struct Game {
         int depth = 1;
         auto start_time = chrono::high_resolution_clock::now();
         int nodes_visited = 0;
-        while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
+        // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
+        while (depth < max_depth) {
             uint128_t my_move_board = possible_moves(me);
             while (my_move_board) {
                 Player temp_me = me;
@@ -364,7 +433,7 @@ struct Game {
                 temp_me.step_by_index(my_move);
                 update_food(temp_me, temp_food, 0);
                 // nodes_visited++;
-                int score = minimax(temp_me, opponent, food_board, depth, INT32_MIN, INT32_MAX, nodes_visited, false);
+                int score = minimax(temp_me, opponent, food_board, depth, INT32_MIN, INT32_MAX, false);
                 
                 if (score > best_score) {
                     best_score = score;
@@ -375,7 +444,7 @@ struct Game {
             depth++;
         }
         // cout << "nodes visited " << nodes_visited << endl;
-        cout << "depth " << depth << endl;
+        // cout << "depth " << depth << endl;
         // cout << "best move : " << best_move << endl;
         return best_move;
     }
@@ -430,11 +499,39 @@ void testing() {
     game.find_best_move(game.me, game.opponent, game.food_board, 2);
 }
 
+
+void benchmark() {
+    Game game(11);
+
+    uint16_t my_starting_idx = 12;
+    uint16_t opponent_starting_idx = 20; 
+    
+    uint16_t food[] = {8, 2, 60};
+    uint128_t food_board = uint128_t(0);
+    for (uint16_t f : food) {
+        food_board |= uint128_t(1) << f;
+    }
+
+    game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board);
+    game.print_board(game.me, game.opponent, game.food_board);
+
+    auto start_time = chrono::high_resolution_clock::now();
+    game.find_best_move(game.me, game.opponent, game.food_board, 11);
+
+    auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
+    cout << "total time: " << end_time << endl;
+}
+
+
 int main()
 {
 
     // testing();
     // exit(0);
+
+    benchmark();
+    exit(0);
+
 
     crow::SimpleApp app;
     app.loglevel(crow::LogLevel::Warning);

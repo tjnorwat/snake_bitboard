@@ -5,8 +5,27 @@
 #include <iostream>
 #include "veque.hpp"
 #include "devector.hpp"
+#include <boost/circular_buffer.hpp>
 
 using namespace std;
+
+// this dont make no sense 
+void circular(uint16_t times) {
+    boost::circular_buffer<uint16_t> body_list(7);
+
+    for (uint16_t i = 1; i < 5; i++) {
+        body_list.push_front(i);
+        uint16_t idx_to_remove = body_list.front();
+        if (i == 4) {
+            body_list.pop_front();
+        }
+        for (int j = 0; j < 7; j++) {
+            cout << body_list[j] << " ";
+        }
+        cout << endl;
+    }
+}
+
 
 // worse than veque 
 void devectors(uint16_t times) {
@@ -75,8 +94,8 @@ void veques_front_eating(uint16_t times) {
 
 void arrays(uint16_t times) {
 
-    uint16_t arr[] = {0, 0, 0, 0, 0};
-    uint16_t len = 5;
+    uint16_t len = 121;
+    uint16_t arr[len] = {0};
     for (uint16_t i = 1; i < times; i++) {
         uint16_t idx_to_remove = arr[len - 1];
         // 0th index represents the square we just moved to ; last index is index to remove
@@ -84,6 +103,10 @@ void arrays(uint16_t times) {
             arr[j] = arr[j-1];
         }
         arr[0] = i;
+        // for (int j = 0; j < len; j++) {
+        //     cout << arr[j] << " ";
+        // }
+        // cout << endl;
     }
 }
 
@@ -197,14 +220,14 @@ void queues_eating(uint16_t times) {
 
 int main() {
 
-    uint16_t times = 65534;
+    uint16_t times = 65535;
 
     chrono::time_point<chrono::high_resolution_clock> start, end;
     double elapsed_time;
 
 
     start = chrono::high_resolution_clock::now();
-    veques_front_resize(times);
+    arrays(times);
     end = chrono::high_resolution_clock::now();
     elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
     cout << "Array time nanoseconds: " << elapsed_time << endl;
