@@ -215,6 +215,18 @@ void queues_eating(uint16_t times) {
 }
 
 
+void long_array(uint16_t times) {
+    uint16_t arr[65540] = {0};
+    uint16_t tail = 0;
+    uint16_t head = 2;
+    for (int i = 0; i < times; i++) {
+        tail++;
+        head++;
+        arr[head] = i;
+    }
+}
+
+
 
 
 
@@ -227,7 +239,7 @@ int main() {
 
 
     start = chrono::high_resolution_clock::now();
-    arrays(times);
+    long_array(times);
     end = chrono::high_resolution_clock::now();
     elapsed_time = double(chrono::duration_cast <chrono::nanoseconds> (end - start).count());
     cout << "Array time nanoseconds: " << elapsed_time << endl;

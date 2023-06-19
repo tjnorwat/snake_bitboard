@@ -89,10 +89,10 @@ struct Player {
     int16_t health;
     uint16_t length;
     Direction direction;
-    deque<uint16_t> body_list;
     uint128_t old_head_board;
     uint128_t snake_head_board;
     uint128_t snake_body_board;
+    uint16_t body_list[121] = {0};
     bool done;
     bool just_ate_apple;
 
@@ -101,11 +101,11 @@ struct Player {
 
     Player(uint16_t starting_idx) {
         this->health = 100;
-        this->length = 3;
+        this->length = 1;
         this->direction = UP;
         this->done = false;
         this->just_ate_apple = false;
-        this->body_list = deque<uint16_t>(1, starting_idx);
+        this->body_list[0] = starting_idx;
         this->snake_head_board = uint128_t(1) << starting_idx;
         this->old_head_board = uint128_t(0);
         this->snake_body_board = uint128_t(0);
@@ -116,7 +116,13 @@ struct Player {
 
     void step_by_index(uint16_t idx) {
         uint128_t new_head = uint128_t(1) << idx;
-        this->body_list.push_front(idx);
+
+        // shift elements to the right; whenever we check for food, we will delete remove last element if need be 
+        // do we need to remove last element or does length take care of us? 
+        for (int i = this->length; i > 0; i--){
+            this->body_list[i] = this->body_list[i - 1];
+        }
+        this->body_list[0] = idx;
         this->snake_body_board |= this->snake_head_board;
         this->old_head_board = this->snake_head_board;
         this->snake_head_board = new_head;
@@ -174,10 +180,8 @@ struct Game {
 
     // prints out me, opponent, and food boards
     void print_board(Player me, Player opponent, uint128_t food_board) const {
-        cout << "me done " << me.done << endl;
-        cout << "opponent done " << opponent.done << endl;
-        cout << "me ate " << me.just_ate_apple << endl;
-        cout << "opponent ate " << opponent.just_ate_apple << endl;
+        cout << "me length " << me.length << endl;
+        cout << "opponent length " << opponent.length << endl;
         for (int i = this->size - 1; i >= 0; --i) {
             for (int j = this->size - 1; j >=0; --j) {
                 uint128_t idx = uint128_t(1) << (i * this->size + j);
@@ -226,16 +230,20 @@ struct Game {
     void update_food(Player &player, uint128_t &food_board, uint16_t turns) {
         if (player.snake_head_board & food_board) {
             player.health = 100;
-            player.length++;
             food_board ^= player.snake_head_board; // removing food 
+            // if we are less than 3 turns, dont delete from snake body 
             if (!player.just_ate_apple) {
                 
-                if(this->total_turns > turns){
-                    uint16_t idx_to_remove = player.body_list.back();
-                    player.body_list.pop_back();
-                    player.snake_body_board ^= uint128_t(1) << idx_to_remove;
+                // more than 3 turns, can remove 
+                if (this->total_turns > turns) {
+                    player.snake_body_board ^= uint128_t(1) << player.body_list[player.length];
+                }
+                // increase length for first 3 moves 
+                else if (this->total_turns <= turns) {
+                    player.length++;
                 }
             }
+            player.length++;
             player.just_ate_apple = true;
         }
         else {
@@ -244,13 +252,13 @@ struct Game {
             if (player.just_ate_apple) {
                 player.just_ate_apple = false;
             }
-            else {
-                // if this is the third or more turn, we can remove from body board 
-                if (this->total_turns > turns) {
-                    uint16_t idx_to_remove = player.body_list.back();
-                    player.body_list.pop_back();
-                    player.snake_body_board ^= uint128_t(1) << idx_to_remove;
-                }
+            // more than 3 turns, get rid of tail 
+            else if (this->total_turns > turns){
+                player.snake_body_board ^= uint128_t(1) << player.body_list[player.length];
+            }
+            // increase length for first 3 moves 
+            else if (this->total_turns <= turns) {
+                player.length++;
             }
         }
     }
@@ -369,14 +377,11 @@ struct Game {
                 my_move_board ^= uint128_t(1) << my_move;
 
                 temp_me.step_by_index(my_move);
-                update_food(temp_me, temp_food, 0);
+                update_food(temp_me, temp_food, -1);
                 
                 int score = minimax(temp_me, opponent, food_board, depth, alpha, beta, false);
                 best_score = max(best_score, score);
                 alpha = max(alpha, best_score);
-                // if (alpha >= beta) {
-                //     break;
-                // }
             }
             return best_score;
         }
@@ -390,18 +395,16 @@ struct Game {
                 opponent_move_board ^= uint128_t(1) << opponent_move;
 
                 temp_opponent.step_by_index(opponent_move);
-                update_food(temp_opponent, temp_food, 0);
+                update_food(temp_opponent, temp_food, -1);
 
                 Player temp_me = me;
-                update_positions(temp_me, temp_opponent); // having trouble figuring out food board; 
+                update_positions(temp_me, temp_opponent); 
                 if (temp_me.just_ate_apple) {
                     temp_food ^= temp_me.snake_head_board;
                 }
                 // nodes_visited++;
 
                 int score = minimax(temp_me, temp_opponent, temp_food, depth - 1, alpha, beta, true);
-                // cout << "score: " << score << endl;
-                // print_board(temp_me, temp_opponent, temp_food);
 
                 best_score = min(best_score, score);
                 beta = min(beta, best_score);
@@ -429,9 +432,8 @@ struct Game {
                 uint128_t temp_food = food_board;
                 uint16_t my_move = boost::multiprecision::lsb(my_move_board);
                 my_move_board ^= uint128_t(1) << my_move;
-
                 temp_me.step_by_index(my_move);
-                update_food(temp_me, temp_food, 0);
+                update_food(temp_me, temp_food, -1);
                 // nodes_visited++;
                 int score = minimax(temp_me, opponent, food_board, depth, INT32_MIN, INT32_MAX, false);
                 
@@ -441,10 +443,10 @@ struct Game {
                     // cout << "BEST MOVE " << best_move << endl;
                 }
             }
+            // cout << "depth " << depth << endl;
             depth++;
         }
         // cout << "nodes visited " << nodes_visited << endl;
-        // cout << "depth " << depth << endl;
         // cout << "best move : " << best_move << endl;
         return best_move;
     }
@@ -494,9 +496,14 @@ void testing() {
         food_board |= uint128_t(1) << f;
     }
 
+
+    // game.total_turns = 10;
+
     game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board);
     game.print_board(game.me, game.opponent, game.food_board);
-    game.find_best_move(game.me, game.opponent, game.food_board, 2);
+    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 2);
+    game.me.step_by_index(move);
+
 }
 
 
@@ -516,10 +523,11 @@ void benchmark() {
     game.print_board(game.me, game.opponent, game.food_board);
 
     auto start_time = chrono::high_resolution_clock::now();
-    game.find_best_move(game.me, game.opponent, game.food_board, 11);
+    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 15);
 
     auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
     cout << "total time: " << end_time << endl;
+    
 }
 
 
@@ -631,7 +639,8 @@ int main()
             game.food_board = food_board;
         }
 
-        // game.print_board(game.me, game.opponent, game.food_board);
+        cout << "turn " <<  turn << endl;
+        game.print_board(game.me, game.opponent, game.food_board);
 
         // getting the best move 
         uint16_t move_idx = game.find_best_move(game.me, game.opponent, game.food_board, 50);
@@ -696,5 +705,8 @@ int main()
         return "";
     });
 
+    // app.port(8080).run();
+
     app.port(8080).multithreaded().run();
+
 }
