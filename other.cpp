@@ -294,7 +294,7 @@ struct Game {
         return 0;
     }
 
-    pair<int, int> minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta) {
+    pair<int, int> minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, int &nodes_visited) {
 
         if (depth == 0 || me.done || opponent.done){
             return pair<int, int>(evaluate(me, depth), -evaluate(opponent, depth));
@@ -326,7 +326,8 @@ struct Game {
                 
                 update_food(temp_opponent, opponent_food_board, 0);
                 update_positions(temp_me, temp_opponent);
-                pair<int, int> score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth - 1, alpha, beta);
+                nodes_visited++;
+                pair<int, int> score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth - 1, alpha, beta, nodes_visited);
 
                 best_min_score = min(best_min_score, score.second);
                 best_max_score = max(best_max_score, best_min_score);
@@ -350,6 +351,7 @@ struct Game {
         uint128_t opponent_move_board = possible_moves(opponent);
 
         int depth = 0;
+        int nodes_visited = 0;
         auto start_time = chrono::high_resolution_clock::now();
         // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
         // for (int i = 0; i < 1; i++) {
@@ -377,8 +379,8 @@ struct Game {
                     // updating body list before seeing if dead 
                     update_food(temp_opponent, opponent_food_board, 0);
                     update_positions(temp_me, temp_opponent);
-
-                    pair<int, int> score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth, INT32_MIN, INT32_MAX);
+                    nodes_visited++;
+                    pair<int, int> score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth, INT32_MIN, INT32_MAX, nodes_visited);
 
                     if (score.first > best_val){
                         best_val = score.first;
@@ -394,6 +396,7 @@ struct Game {
             ++depth;
         }
         cout << "depth " << depth << endl;
+        cout << "nodes visited " << nodes_visited << endl;
         // cout << "best move : " << best_move << endl;
         return best_move;
     }
@@ -469,7 +472,7 @@ void benchmark() {
     game.print_board(game.me, game.opponent, game.food_board);
 
     auto start_time = chrono::high_resolution_clock::now();
-    game.find_best_move(game.me, game.opponent, game.food_board, 16);
+    game.find_best_move(game.me, game.opponent, game.food_board, 15);
 
     auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
     cout << "total time: " << end_time << endl;

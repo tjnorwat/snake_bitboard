@@ -1,7 +1,5 @@
 #include "crow.h"
-#include <deque>
 #include <random>
-#include <vector>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -12,6 +10,7 @@ using namespace std;
 using boost::multiprecision::uint128_t;
 
 uint32_t const hash_size = 4294967295; // 2^32 - 1
+uint16_t const arr_size = 127; // 2^7 - 1 
 
 
 enum Direction {
@@ -20,6 +19,40 @@ enum Direction {
     UP,
     DOWN
 };
+
+uint128_t precompute_moves[4][121];
+
+void precomp_moves() {
+    for (int direction = LEFT; direction <= DOWN; direction++){
+        for (int i = 0; i < 121; i++) {
+            uint128_t move_board = uint128_t(0);
+            switch (direction) {
+                case LEFT:
+                    move_board |= uint128_t(1) << (i + 1);
+                    move_board |= uint128_t(1) << (i + 11);
+                    move_board |= uint128_t(1) << (i - 11);
+                    break;
+                case RIGHT:
+                    move_board |= uint128_t(1) << (i - 1);
+                    move_board |= uint128_t(1) << (i + 11);
+                    move_board |= uint128_t(1) << (i - 11);
+                    break;
+                case UP:
+                    move_board |= uint128_t(1) << (i + 1);
+                    move_board |= uint128_t(1) << (i - 1);
+                    move_board |= uint128_t(1) << (i + 11);
+                    break;
+                default:
+                    move_board |= uint128_t(1) << (i + 1);
+                    move_board |= uint128_t(1) << (i - 1);
+                    move_board |= uint128_t(1) << (i - 11);
+                    break;
+            }
+            precompute_moves[direction][i] = move_board;
+        }
+    }
+}
+
 
 enum Hash_Flag {
     EXACT,
@@ -84,7 +117,6 @@ struct tt {
 // };
 
 
-
 struct Player {
     int16_t health;
     uint16_t length;
@@ -92,7 +124,11 @@ struct Player {
     uint128_t old_head_board;
     uint128_t snake_head_board;
     uint128_t snake_body_board;
-    uint16_t body_list[121] = {0};
+
+    uint16_t body_arr[arr_size] = {0};
+    uint16_t head_idx;
+    uint16_t tail_idx;
+
     bool done;
     bool just_ate_apple;
 
@@ -101,32 +137,35 @@ struct Player {
 
     Player(uint16_t starting_idx) {
         this->health = 100;
-        this->length = 1;
+        this->length = 3;
         this->direction = UP;
         this->done = false;
         this->just_ate_apple = false;
-        this->body_list[0] = starting_idx;
+
+        this->head_idx = 2;
+        this->tail_idx = 0;
+        this->body_arr[this->head_idx] = starting_idx; 
+
         this->snake_head_board = uint128_t(1) << starting_idx;
         this->old_head_board = uint128_t(0);
         this->snake_body_board = uint128_t(0);
     }
 
 
-    // implement direction 2darray instead of switch
+    // implement direction 2darray instead of switch ? 
 
     void step_by_index(uint16_t idx) {
         uint128_t new_head = uint128_t(1) << idx;
 
-        // shift elements to the right; whenever we check for food, we will delete remove last element if need be 
-        // do we need to remove last element or does length take care of us? 
-        for (int i = this->length; i > 0; i--){
-            this->body_list[i] = this->body_list[i - 1];
-        }
-        this->body_list[0] = idx;
+        this->head_idx++;
+        this->body_arr[this->head_idx & arr_size] = idx;
+
         this->snake_body_board |= this->snake_head_board;
         this->old_head_board = this->snake_head_board;
         this->snake_head_board = new_head;
-        int dir = idx - boost::multiprecision::lsb(this->old_head_board);
+        // int dir = idx - boost::multiprecision::lsb(this->old_head_board);
+        int dir = idx - this->body_arr[(this->head_idx - 1) & arr_size];
+
 
         switch (dir) {
         case 1:
@@ -151,10 +190,10 @@ struct Game {
     uint16_t size;
     int16_t total_turns;
     uint128_t food_board;
-    uint128_t first_row;
-    uint128_t last_row;
-    uint128_t last_column;
-    uint128_t first_column;
+    uint128_t top_row;
+    uint128_t bottom_row;
+    uint128_t right_column;
+    uint128_t left_column;
     vector<uint32_t> food_choices;
 
 
@@ -164,16 +203,16 @@ struct Game {
 
         this->total_turns = 0;
 
-        this->first_column = uint128_t(0);
-        this->last_column = uint128_t(0);
-        this->first_row = uint128_t(0);
-        this->last_row = uint128_t(0);
+        this->left_column = uint128_t(0);
+        this->right_column = uint128_t(0);
+        this->top_row = uint128_t(0);
+        this->bottom_row = uint128_t(0);
 
         for (uint16_t i = 0; i < size; ++i) {
-            this->first_column |= uint128_t(1) << (size * i + size - 1);
-            this->last_column |= uint128_t(1) << (size * i);
-            this->first_row |= uint128_t(1) << (size * size - i - 1);
-            this->last_row |= uint128_t(1) << i;
+            this->left_column |= uint128_t(1) << (size * i + size - 1);
+            this->right_column |= uint128_t(1) << (size * i);
+            this->top_row |= uint128_t(1) << (size * size - i - 1);
+            this->bottom_row |= uint128_t(1) << i;
         }
         this->food_board = uint128_t(0);
     }
@@ -224,95 +263,89 @@ struct Game {
         this->food_board = food_board;
     }
 
-    // helper function for update_positions
-    // updates player attributes if ate apple
-    // TODO : update total_turns 
-    void update_food(Player &player, uint128_t &food_board, uint16_t turns) {
+
+    void update_food(Player &player, uint128_t &food_board) {
         if (player.snake_head_board & food_board) {
-            player.health = 100;
-            food_board ^= player.snake_head_board; // removing food 
-            // if we are less than 3 turns, dont delete from snake body 
-            if (!player.just_ate_apple) {
-                
-                // more than 3 turns, can remove 
-                if (this->total_turns > turns) {
-                    player.snake_body_board ^= uint128_t(1) << player.body_list[player.length];
-                }
-                // increase length for first 3 moves 
-                else if (this->total_turns <= turns) {
-                    player.length++;
-                }
-            }
+            food_board ^= player.snake_head_board;
             player.length++;
+            // if we didnt eat before, we still need to remove the body 
+            if (!player.just_ate_apple) { 
+                player.health = 100;
+                player.snake_body_board ^= uint128_t(1) << player.body_arr[player.tail_idx & arr_size];
+                player.tail_idx++;
+            }
             player.just_ate_apple = true;
         }
         else {
             player.health--;
-            // if we just ate apple, dont pop back 
             if (player.just_ate_apple) {
                 player.just_ate_apple = false;
             }
-            // more than 3 turns, get rid of tail 
-            else if (this->total_turns > turns){
-                player.snake_body_board ^= uint128_t(1) << player.body_list[player.length];
-            }
-            // increase length for first 3 moves 
-            else if (this->total_turns <= turns) {
-                player.length++;
+            else {
+                player.snake_body_board ^= uint128_t(1) << player.body_arr[player.tail_idx & arr_size];
+                player.tail_idx++;
             }
         }
     }
 
 
+    // wont get the last couple msb for first 3 moves, but shouldnt matter 
+    // need to add num_food_on_board to update_food()
+    /*
+    void get_food() {
+        
+        // dont need to xor msb's since free spots only goes up to 120 
+        uint128_t all_boards = ~(this->me.snake_body_board | this->me.snake_head_board | this->opponent.snake_body_board | this->opponent.snake_head_board);
+
+        // 0-120 inclusive 
+        uint16_t free_spots = 120 - this->num_food_on_board - this->me.length - this->opponent.length;
+
+        // since we know the number of free idxs, we can generate a random number from 0 to free_idx and stop at that number
+        random_device rd;
+        mt19937 rng(rd());
+        uniform_int_distribution<size_t> dist(0, free_spots);
+        size_t random_idx = dist(rng);
+
+        // idea is to go up to the random idx without having to go through whole board
+        for (int i = 0; i < random_idx; i++) {
+            uint16_t idx = boost::multiprecision::lsb(all_boards);
+            all_boards ^= uint128_t(1) << idx;
+        }
+
+        // can we always guarantee that there will be a place? 
+        if (all_boards) {
+            uint16_t idx = boost::multiprecision::lsb(all_boards);
+            this->food_board |= uint128_t(1) << idx;
+            this->num_food_on_board++;
+        }
+    }
+    */
+
+   void check_if_done(Player &player, uint128_t all_boards) {
+        if ((player.old_head_board & this->left_column && player.direction == LEFT) ||
+            (player.old_head_board & this->right_column && player.direction == RIGHT) ||
+            (player.old_head_board & this->top_row && player.direction == UP) ||
+            (player.old_head_board & this->bottom_row && player.direction == DOWN) ||
+            (player.snake_head_board & all_boards) ||
+            (player.health <= 0)) {
+
+            player.done = true;
+        }
+   }
+
     // update if we die, ate apple, and body positions 
     void update_positions(Player &me, Player &opponent) {
         uint128_t all_boards = me.snake_body_board | opponent.snake_body_board;
 
-        if (me.old_head_board & this->first_column && me.snake_head_board & this->last_column){
-            me.done = true;
-        }
-        else if (me.old_head_board & this->first_column && me.direction == LEFT) {
-            me.done = true;
-        }
-        else if (me.old_head_board & this->last_column && me.snake_head_board & this->first_column) {
-            me.done = true;
-        }
-        else if (me.old_head_board & this->first_row && me.direction == UP) {
-            me.done = true;
-        }
-        else if (me.old_head_board & this->last_row && me.direction == DOWN) {
-            me.done = true;
-        }
-        else if (me.snake_head_board & all_boards) {
-            me.done = true;
-        }
-        else if (me.health <= 0) {
-            me.done = true;
-        }
+        this->check_if_done(me, all_boards);
+        this->check_if_done(opponent, all_boards);
 
 
-        if (opponent.old_head_board & this->first_column && opponent.snake_head_board & this->last_column) {
-            opponent.done = true;
+        // need to check if either snake dies before checking if ran into head; 
+        // ex. ran into wall wraps around to other side which could kill other snake
+        if (me.done || opponent.done) {
+            return;
         }
-        else if (opponent.old_head_board & this->first_column && opponent.direction == LEFT) {
-            opponent.done = true;
-        } 
-        else if (opponent.old_head_board & this->last_column && opponent.snake_head_board & this->first_column) {
-            opponent.done = true;
-        }
-        else if (opponent.old_head_board & this->first_row && opponent.direction == UP) {
-            opponent.done = true;
-        }
-        else if (opponent.old_head_board & this->last_row && opponent.direction == DOWN) {
-            opponent.done = true;
-        }
-        else if(opponent.snake_head_board & all_boards) {
-            opponent.done = true;
-        }
-        else if (opponent.health <= 0) {
-            opponent.done = true;
-        }
-
 
         // if either runs into others head, check which would win 
         if (me.snake_head_board & opponent.snake_head_board){
@@ -322,8 +355,10 @@ struct Game {
             else if (me.length < opponent.length) {
                 me.done = true;
             }
-            me.done = true;
-            opponent.done = true;
+            else {
+                me.done = true;
+                opponent.done = true;
+            }
         }
     }
 
@@ -333,6 +368,32 @@ struct Game {
 
         int my_score = 0;
         int opponent_score = 0;
+
+
+
+        // my_score += me.length;
+        // opponent_score += opponent.length; 
+
+        // // my_score += head_score[me.body_arr[me.head_idx]];
+        // // opponent_score += head_score[opponent.body_arr[opponent.head_idx]];
+
+
+
+
+
+        // if (me.done) {
+        //     my_score = -1000 + depth;
+        // }
+        
+        // if (opponent.done) {
+        //     opponent_score = -1000 + depth;
+        // }
+
+        // score += my_score;
+        // score -= opponent_score;
+
+        // return score;
+
 
         if (me.done) {
             my_score += -1000 + depth;
@@ -354,7 +415,7 @@ struct Game {
         return score;
     }
 
-    int minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, bool is_maximizing) {
+    int minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, int &nodes_visited) {
 
         if (me.done && opponent.done) {
             return -1000 + depth;
@@ -367,53 +428,55 @@ struct Game {
             return evaluate(me, opponent, depth);
         }
 
-        if (is_maximizing) {
-            int best_score = INT32_MIN;
-            uint128_t my_move_board = possible_moves(me);
-            while (my_move_board) {
-                Player temp_me = me;
-                uint128_t temp_food = food_board;
-                uint16_t my_move = boost::multiprecision::lsb(my_move_board);
-                my_move_board ^= uint128_t(1) << my_move;
+        int best_max_score = INT32_MIN;
+        int best_min_score = INT32_MAX;
 
-                temp_me.step_by_index(my_move);
-                update_food(temp_me, temp_food, -1);
-                
-                int score = minimax(temp_me, opponent, food_board, depth, alpha, beta, false);
-                best_score = max(best_score, score);
-                alpha = max(alpha, best_score);
-            }
-            return best_score;
-        }
-        else {
-            int best_score = INT32_MAX;
-            uint128_t opponent_move_board = possible_moves(opponent);
-            while (opponent_move_board) {
+        // uint128_t my_move_board = possible_moves(boost::multiprecision::lsb(me.snake_head_board), me.direction);
+        // uint128_t my_move_board = precompute_moves[me.direction][boost::multiprecision::lsb(me.snake_head_board)];
+        uint128_t my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
+
+        
+        // uint128_t opponent_move_board = possible_moves(boost::multiprecision::lsb(opponent.snake_head_board), opponent.direction);
+        // uint128_t opponent_move_board = precompute_moves[opponent.direction][boost::multiprecision::lsb(opponent.snake_head_board)];
+        uint128_t opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
+
+
+
+        while(my_move_board) {
+            uint128_t my_food_board = food_board;
+            uint16_t my_move = boost::multiprecision::lsb(my_move_board);
+            // uint16_t my_move = my_move_board & -my_move_board;
+
+            my_move_board ^= uint128_t(1) << my_move;
+
+            Player temp_me = me;
+            temp_me.step_by_index(my_move);
+            update_food(temp_me, my_food_board);
+
+            uint128_t temp_opponent_move_board = opponent_move_board;
+            while(temp_opponent_move_board) {
+                uint128_t opponent_food_board = food_board;
+
+                uint16_t opponent_move = boost::multiprecision::lsb(temp_opponent_move_board);
+                temp_opponent_move_board ^= uint128_t(1) << opponent_move;
+
                 Player temp_opponent = opponent;
-                uint128_t temp_food = food_board;
-                uint16_t opponent_move = boost::multiprecision::lsb(opponent_move_board);
-                opponent_move_board ^= uint128_t(1) << opponent_move;
-
                 temp_opponent.step_by_index(opponent_move);
-                update_food(temp_opponent, temp_food, -1);
+                update_food(temp_opponent, opponent_food_board);
 
-                Player temp_me = me;
-                update_positions(temp_me, temp_opponent); 
-                if (temp_me.just_ate_apple) {
-                    temp_food ^= temp_me.snake_head_board;
-                }
-                // nodes_visited++;
+                update_positions(temp_me, temp_opponent);
+                nodes_visited++;
+                int score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth - 1, alpha, beta, nodes_visited);
+                best_min_score = min(best_min_score, score);
+                best_max_score = max(best_max_score, score);
+                alpha = max(alpha, best_max_score);
+                beta = min(beta, best_min_score);
 
-                int score = minimax(temp_me, temp_opponent, temp_food, depth - 1, alpha, beta, true);
-
-                best_score = min(best_score, score);
-                beta = min(beta, best_score);
-                if (alpha >= beta) {
+                if (alpha >= beta)
                     break;
-                }
             }
-            return best_score;
         }
+        return best_max_score;
     }
 
     uint16_t find_best_move(Player me, Player opponent, uint128_t food_board, int max_depth) {
@@ -421,66 +484,96 @@ struct Game {
         int best_score = INT32_MIN;
         uint16_t best_move;
 
-        int depth = 1;
+        int depth = 0;
         auto start_time = chrono::high_resolution_clock::now();
         int nodes_visited = 0;
+
+        // uint128_t my_move_board = possible_moves(boost::multiprecision::lsb(me.snake_head_board), me.direction);
+        // uint128_t my_move_board = precompute_moves[me.direction][boost::multiprecision::lsb(me.snake_head_board)];
+        uint128_t my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
+
+
+        // uint128_t opponent_move_board = possible_moves(boost::multiprecision::lsb(opponent.snake_head_board), opponent.direction);
+        // uint128_t opponent_move_board = precompute_moves[opponent.direction][boost::multiprecision::lsb(opponent.snake_head_board)];
+        uint128_t opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
+
+
+
         // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
         while (depth < max_depth) {
-            uint128_t my_move_board = possible_moves(me);
-            while (my_move_board) {
-                Player temp_me = me;
-                uint128_t temp_food = food_board;
-                uint16_t my_move = boost::multiprecision::lsb(my_move_board);
-                my_move_board ^= uint128_t(1) << my_move;
-                temp_me.step_by_index(my_move);
-                update_food(temp_me, temp_food, -1);
-                // nodes_visited++;
-                int score = minimax(temp_me, opponent, food_board, depth, INT32_MIN, INT32_MAX, false);
+            uint128_t temp_my_move_board = my_move_board;
+            while (temp_my_move_board) {
+                uint128_t my_food_board = food_board;
+                uint16_t my_move = boost::multiprecision::lsb(temp_my_move_board);
+                temp_my_move_board ^= uint128_t(1) << my_move;
                 
-                if (score > best_score) {
-                    best_score = score;
-                    best_move = my_move;
-                    // cout << "BEST MOVE " << best_move << endl;
+                Player temp_me = me;
+                temp_me.step_by_index(my_move);
+                update_food(temp_me, my_food_board);
+
+                uint128_t temp_opponent_move_board = opponent_move_board;
+                while (temp_opponent_move_board) {
+                    uint128_t opponent_food_board = food_board;
+                    uint16_t opponent_move = boost::multiprecision::lsb(temp_opponent_move_board);
+                    temp_opponent_move_board ^= uint128_t(1) << opponent_move;
+
+                    Player temp_opponent = opponent;
+                    temp_opponent.step_by_index(opponent_move);
+
+                    update_food(temp_opponent, opponent_food_board);
+                    update_positions(temp_me, temp_opponent);
+                    nodes_visited++;
+                    int score = minimax(temp_me, temp_opponent, my_food_board & opponent_food_board, depth, INT32_MIN, INT32_MAX, nodes_visited);
+                    if (score > best_score) {
+                        best_score = score;
+                        best_move = my_move;
+                    }
                 }
             }
             // cout << "depth " << depth << endl;
             depth++;
         }
-        // cout << "nodes visited " << nodes_visited << endl;
+        cout << "nodes visited " << nodes_visited << endl;
         // cout << "best move : " << best_move << endl;
         return best_move;
     }
 
-    uint128_t possible_moves(Player player) const {
 
-        uint16_t head_idx = boost::multiprecision::lsb(player.snake_head_board);
-        uint128_t move_board = uint128_t(0);
+    // uint128_t possible_moves(uint16_t head_idx, Direction direction) const { 
+    //     // uint16_t head_idx = boost::multiprecision::lsb(player.snake_head_board);
+    //     return precompute_moves[direction][head_idx];
+    // }
 
-        switch (player.direction) {
-            case LEFT:
-                move_board |= uint128_t(1) << (head_idx + 1);
-                move_board |= uint128_t(1) << (head_idx + this->size);
-                move_board |= uint128_t(1) << (head_idx - this->size);
-                break;
-            case RIGHT:
-                move_board |= uint128_t(1) << (head_idx - 1);
-                move_board |= uint128_t(1) << (head_idx + this->size);
-                move_board |= uint128_t(1) << (head_idx - this->size);
-                break;
-            case UP:
-                move_board |= uint128_t(1) << (head_idx + 1);
-                move_board |= uint128_t(1) << (head_idx - 1);
-                move_board |= uint128_t(1) << (head_idx + this->size);
-                break;
-            default:
-                move_board |= uint128_t(1) << (head_idx + 1);
-                move_board |= uint128_t(1) << (head_idx - 1);
-                move_board |= uint128_t(1) << (head_idx - this->size);
-                break;
-        }
+    // // can later change this to 2d arr of directions and location of head 
+    // uint128_t possible_moves(Player player) const {
 
-        return move_board;
-    }
+    //     uint16_t head_idx = boost::multiprecision::lsb(player.snake_head_board);
+    //     uint128_t move_board = uint128_t(0);
+
+    //     switch (player.direction) {
+    //         case LEFT:
+    //             move_board |= uint128_t(1) << (head_idx + 1);
+    //             move_board |= uint128_t(1) << (head_idx + this->size);
+    //             move_board |= uint128_t(1) << (head_idx - this->size);
+    //             break;
+    //         case RIGHT:
+    //             move_board |= uint128_t(1) << (head_idx - 1);
+    //             move_board |= uint128_t(1) << (head_idx + this->size);
+    //             move_board |= uint128_t(1) << (head_idx - this->size);
+    //             break;
+    //         case UP:
+    //             move_board |= uint128_t(1) << (head_idx + 1);
+    //             move_board |= uint128_t(1) << (head_idx - 1);
+    //             move_board |= uint128_t(1) << (head_idx + this->size);
+    //             break;
+    //         default:
+    //             move_board |= uint128_t(1) << (head_idx + 1);
+    //             move_board |= uint128_t(1) << (head_idx - 1);
+    //             move_board |= uint128_t(1) << (head_idx - this->size);
+    //             break;
+    //     }
+    //     return move_board;
+    // }
 };
 
 
@@ -490,7 +583,7 @@ void testing() {
     uint16_t my_starting_idx = 61; // 12 // 61
     uint16_t opponent_starting_idx = 59; // 20
     
-    uint16_t food[] = {8, 2, 60};
+    uint16_t food[] = {8, 2, 60, 83, 81};
     uint128_t food_board = uint128_t(0);
     for (uint16_t f : food) {
         food_board |= uint128_t(1) << f;
@@ -501,8 +594,22 @@ void testing() {
 
     game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board);
     game.print_board(game.me, game.opponent, game.food_board);
-    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 2);
-    game.me.step_by_index(move);
+
+    for (int i = 1; i < 6; i++) {
+        game.me.step_by_index(61 + (11 * i));
+        game.update_food(game.me, game.food_board);
+
+        game.opponent.step_by_index(59 + (11 * i));
+        game.update_food(game.opponent, game.food_board);
+        
+        game.update_positions(game.me, game.opponent);
+
+        game.print_board(game.me, game.opponent, game.food_board);
+    }
+
+
+    // uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 2);
+    // game.me.step_by_index(move);
 
 }
 
@@ -533,6 +640,8 @@ void benchmark() {
 
 int main()
 {
+
+    precomp_moves();
 
     // testing();
     // exit(0);
@@ -632,8 +741,8 @@ int main()
             // has to be before updating food
             game.me.step_by_index(my_prev_move);
             game.opponent.step_by_index(opponent_idx);
-            game.update_food(game.me, game.food_board, 2);
-            game.update_food(game.opponent, game.food_board, 2);
+            game.update_food(game.me, game.food_board);
+            game.update_food(game.opponent, game.food_board);
             game.update_positions(game.me, game.opponent);
 
             game.food_board = food_board;
@@ -692,9 +801,9 @@ int main()
         uint128_t temp_food = food_board;
         game.me.step_by_index(my_prev_move);
         game.opponent.step_by_index(opponent_idx);
-        game.update_food(game.me, temp_food, 2);
+        game.update_food(game.me, temp_food);
         temp_food = food_board;
-        game.update_food(game.opponent, temp_food, 2);
+        game.update_food(game.opponent, temp_food);
         game.update_positions(game.me, game.opponent);
 
         game.food_board = food_board;
