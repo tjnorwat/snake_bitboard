@@ -11,8 +11,14 @@
 using namespace std;
 using boost::multiprecision::uint128_t;
 
-uint32_t const hash_size = 4294967295; // 2^32 - 1
-uint16_t const arr_size = 127; // 2^7 - 1 
+const uint32_t hash_size = 4294967295; // 2^32 - 1
+const uint16_t arr_size = 127; // 2^7 - 1 
+
+
+const uint128_t LEFT_COLUMN = uint128_t("1329877349959700883100633541501780992");
+const uint128_t RIGHT_COLUMN = uint128_t("1298708349570020393652962442872833");
+const uint128_t TOP_ROW = uint128_t("2657157917355198038900481496478384128");
+const uint128_t BOTTOM_ROW = uint128_t("2047");
 
 
 enum Direction {
@@ -117,6 +123,7 @@ struct tt {
 
 // using size 11 board for offset 
 array<Direction, 2*11 + 1> direction_lookup;
+// Direction direction_lookup[2*11 + 1];
 
 void init_direction_lookup() {
     direction_lookup[1 + 11] = LEFT;
@@ -133,7 +140,7 @@ struct Player {
     uint128_t snake_head_board;
     uint128_t snake_body_board;
 
-    uint16_t body_arr[arr_size] = {0};
+    uint16_t body_arr[arr_size] = {0}; // using std::array is worse
     uint16_t head_idx;
     uint16_t tail_idx;
 
@@ -184,30 +191,10 @@ struct Game {
     uint16_t size;
     int16_t total_turns;
     uint128_t food_board;
-    uint128_t top_row;
-    uint128_t bottom_row;
-    uint128_t right_column;
-    uint128_t left_column;
 
-
-
-    Game() {}
-
-    Game(uint16_t size) : size(size) {
-
+    Game() {
+        this->size = 11;
         this->total_turns = 0;
-
-        this->left_column = uint128_t(0);
-        this->right_column = uint128_t(0);
-        this->top_row = uint128_t(0);
-        this->bottom_row = uint128_t(0);
-
-        for (uint16_t i = 0; i < size; ++i) {
-            this->left_column |= uint128_t(1) << (size * i + size - 1);
-            this->right_column |= uint128_t(1) << (size * i);
-            this->top_row |= uint128_t(1) << (size * size - i - 1);
-            this->bottom_row |= uint128_t(1) << i;
-        }
         this->food_board = uint128_t(0);
     }
 
@@ -259,14 +246,12 @@ struct Game {
 
 
     void update_food(Player &player, uint128_t &food_board) {
-        uint128_t tail_bit = uint128_t(1) << player.body_arr[player.tail_idx & arr_size];
-
         if (player.snake_head_board & food_board) {
             food_board ^= player.snake_head_board;
             player.length++;
             if (!player.just_ate_apple) { 
                 player.health = 100;
-                player.snake_body_board ^= tail_bit;
+                player.snake_body_board ^= uint128_t(1) << player.body_arr[player.tail_idx & arr_size];
                 player.tail_idx++;
             }
             player.just_ate_apple = true;
@@ -274,7 +259,7 @@ struct Game {
         else {
             player.health--;
             if (!player.just_ate_apple) {
-                player.snake_body_board ^= tail_bit;
+                player.snake_body_board ^= uint128_t(1) << player.body_arr[player.tail_idx & arr_size];
                 player.tail_idx++;
             }
             player.just_ate_apple = false;
@@ -318,11 +303,11 @@ struct Game {
     */
 
    // make bitmasks const and global 
-   void check_if_done(Player &player, uint128_t all_boards) {
-        if ((player.old_head_board & this->left_column && player.direction == LEFT) ||
-            (player.old_head_board & this->right_column && player.direction == RIGHT) ||
-            (player.old_head_board & this->top_row && player.direction == UP) ||
-            (player.old_head_board & this->bottom_row && player.direction == DOWN) ||
+   void check_if_done(Player &player, const uint128_t all_boards) {
+        if ((player.old_head_board & LEFT_COLUMN && player.direction == LEFT) ||
+            (player.old_head_board & RIGHT_COLUMN && player.direction == RIGHT) ||
+            (player.old_head_board & TOP_ROW && player.direction == UP) ||
+            (player.old_head_board & BOTTOM_ROW && player.direction == DOWN) ||
             (player.snake_head_board & all_boards) ||
             (player.health <= 0)) {
 
@@ -332,7 +317,7 @@ struct Game {
 
     // update if we die, ate apple, and body positions 
     void update_positions(Player &me, Player &opponent) {
-        uint128_t all_boards = me.snake_body_board | opponent.snake_body_board;
+        const uint128_t all_boards = me.snake_body_board | opponent.snake_body_board;
 
         this->check_if_done(me, all_boards);
         this->check_if_done(opponent, all_boards);
@@ -359,7 +344,7 @@ struct Game {
         }
     }
 
-    int evaluate(Player me, Player opponent, int depth) {
+    int evaluate(Player &me, Player &opponent, int &depth) const {
 
         int score = 0;
 
@@ -407,13 +392,12 @@ struct Game {
         return score;
     }
 
-    int minimax(Player me, Player opponent, uint128_t food_board, int depth, int alpha, int beta, int &nodes_visited) {
-
-        if (me.done && opponent.done) {
-            return -1000 + depth;
-        }
+    int minimax(Player &me, Player &opponent, uint128_t food_board, int depth, int alpha, int beta, int &nodes_visited) {
 
         if (depth == 0 || me.done || opponent.done){
+            if (me.done && opponent.done) {
+                return -1000 + depth;
+            }
             if (me.just_ate_apple && opponent.just_ate_apple) {
                 return 100 - depth;
             }
@@ -423,17 +407,17 @@ struct Game {
         int best_max_score = INT32_MIN;
         int best_min_score = INT32_MAX;
 
-        vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
-        vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
+        const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
+        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
 
-        for (uint16_t my_move : my_move_board) {
+        for (const uint16_t my_move : my_move_board) {
             uint128_t my_food_board = food_board;
 
             Player temp_me = me;
             temp_me.step_by_index(my_move);
             update_food(temp_me, my_food_board);
 
-            for (uint16_t opponent_move : opponent_move_board) {
+            for (const uint16_t opponent_move : opponent_move_board) {
                 uint128_t opponent_food_board = food_board;
 
                 Player temp_opponent = opponent;
@@ -464,18 +448,18 @@ struct Game {
         auto start_time = chrono::high_resolution_clock::now();
         int nodes_visited = 0;
 
-        vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
-        vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
+        const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & arr_size]];
+        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & arr_size]];
 
         while (depth < max_depth) {
-            for (uint16_t my_move : my_move_board) {
+            for (const uint16_t my_move : my_move_board) {
                 uint128_t my_food_board = food_board;
 
                 Player temp_me = me;
                 temp_me.step_by_index(my_move);
                 update_food(temp_me, my_food_board);
 
-                for (uint16_t opponent_move : opponent_move_board) {
+                for (const uint16_t opponent_move : opponent_move_board) {
                     uint128_t opponent_food_board = food_board;
 
                     Player temp_opponent = opponent;
@@ -501,7 +485,7 @@ struct Game {
 
 
 void testing() {
-    Game game(11);
+    Game game;
 
     uint16_t my_starting_idx = 61; // 12 // 61
     uint16_t opponent_starting_idx = 59; // 20
@@ -535,7 +519,7 @@ void testing() {
 
 
 void benchmark() {
-    Game game(11);
+    Game game;
 
     uint16_t my_starting_idx = 12;
     uint16_t opponent_starting_idx = 20; 
@@ -552,8 +536,10 @@ void benchmark() {
     auto start_time = chrono::high_resolution_clock::now();
     uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 15);
 
-    auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
-    cout << "total time: " << end_time << endl;
+    // auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
+    auto end_time = chrono::high_resolution_clock::now();
+    double time_taken = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
+    cout << "total time: " << time_taken << endl;
     
 }
 
@@ -597,7 +583,7 @@ int main()
     ([&](const crow::request& req){
 
         uint16_t my_starting_idx, opponent_starting_idx;
-        game = Game(11);
+        game = Game();
         // rapidjson::Document doc;
         doc.Parse(req.body.c_str());
 
@@ -731,7 +717,7 @@ int main()
 
         game.print_board(game.me, game.opponent, game.food_board);
         cout << "ENDED" << endl;
-        game = Game(11); // reset game 
+        // game = Game(); // reset game 
         return "";
     });
 

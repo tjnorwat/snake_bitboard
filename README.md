@@ -13,3 +13,6 @@
 * caching actual indexes to get rid of lsb calls 
     * tried using 3d array but possible moves wasnt always size 3 
         * once removed if move_idx was > 120 break ; saw 12% uplift 
+
+# passing by reference in minimax
+* allowed for an 12% speedup 
