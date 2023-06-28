@@ -1,4 +1,5 @@
-CXX = g++
+# CXX = g++
+CXX = clang++-15
 CXXFLAGS = -Ofast
 LIBS = -lpthread
 

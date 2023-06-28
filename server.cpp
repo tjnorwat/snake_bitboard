@@ -301,7 +301,7 @@ struct Game {
     }
     */
 
-   // make bitmasks const and global 
+   // check if we run into wall, ourselves/opponent, or health is 0
    void check_if_done(Player &player, const uint128_t all_boards) {
         if ((player.old_head_board & LEFT_COLUMN && player.direction == LEFT) ||
             (player.old_head_board & RIGHT_COLUMN && player.direction == RIGHT) ||
@@ -314,7 +314,7 @@ struct Game {
         }
    }
 
-    // update if we die, ate apple, and body positions 
+    // update if we die
     void update_positions(Player &me, Player &opponent) {
         const uint128_t all_boards = me.snake_body_board | opponent.snake_body_board;
 
@@ -342,6 +342,15 @@ struct Game {
             }
         }
     }
+
+
+    void undo_move(Player &player) {
+        // decrement head and maybe tail 
+        // if done, not done 
+        // if ate apple, not ate apple but depends if ate apple before so might need food_board? 
+        // put back body from decremented tail
+    }
+
 
     int evaluate(Player &me, Player &opponent, int &depth) const {
 

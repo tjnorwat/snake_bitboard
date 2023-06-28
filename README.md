@@ -16,3 +16,6 @@
 
 # passing by reference in minimax
 * allowed for an 12% speedup 
+
+# clang faster than g++
+* 22% improvement 
