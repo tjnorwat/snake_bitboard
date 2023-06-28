@@ -1,6 +1,5 @@
 #include "crow.h"
 #include <random>
-#include <array>
 #include <vector>
 #include <chrono>
 #include <cstdint>
@@ -28,7 +27,8 @@ enum Direction {
     DOWN
 };
 
-array<array<vector<uint16_t>, 121>, 4> precompute_moves;
+// trying to flatten (3d -> 2d array) yields no results 
+vector<uint16_t> precompute_moves[4][121];
 
 void precomp_moves() {
     for (uint16_t direction = LEFT; direction <= DOWN; direction++) {
@@ -122,8 +122,7 @@ struct tt {
 // };
 
 // using size 11 board for offset 
-array<Direction, 2*11 + 1> direction_lookup;
-// Direction direction_lookup[2*11 + 1];
+Direction direction_lookup[2*11 + 1];
 
 void init_direction_lookup() {
     direction_lookup[1 + 11] = LEFT;
@@ -140,7 +139,7 @@ struct Player {
     uint128_t snake_head_board;
     uint128_t snake_body_board;
 
-    uint16_t body_arr[arr_size] = {0}; // using std::array is worse
+    uint16_t body_arr[arr_size] = {0};
     uint16_t head_idx;
     uint16_t tail_idx;
 
