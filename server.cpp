@@ -131,6 +131,20 @@ void init_direction_lookup() {
     direction_lookup[-11 + BOARD_SIZE] = DOWN;
 }
 
+struct Move {
+    uint64_t old_old_head_board_firsthalf, old_old_head_board_secondhalf;
+    uint64_t old_head_board_firsthalf, old_head_board_secondhalf;
+    uint64_t old_body_board_firsthalf, old_body_board_secondhalf;
+    int16_t old_health;
+    uint16_t old_length;
+    uint16_t old_head_idx, old_tail_idx;
+    Direction direction;
+    bool old_done, old_just_ate_apple;
+    uint64_t old_food_board_firsthalf, old_food_board_secondhalf;
+};
+
+
+
 struct Player {
     int16_t health;
     uint16_t length;
@@ -179,9 +193,26 @@ struct Player {
         this->snake_body_board_secondhalf = 0ULL;
     }
 
-    void step_by_index(uint16_t idx) {
-        // getting new direction before we increment head idx 
-        this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; // unordered map is worse 
+    Move step_by_index(uint16_t idx) {
+        // Construct Move struct with current state
+        Move move{
+            .old_old_head_board_firsthalf = this->old_head_board_firsthalf,
+            .old_old_head_board_secondhalf = this->old_head_board_secondhalf,
+            .old_head_board_firsthalf = this->snake_head_board_firsthalf,
+            .old_head_board_secondhalf = this->snake_head_board_secondhalf,
+            .old_body_board_firsthalf = this->snake_body_board_firsthalf,
+            .old_body_board_secondhalf = this->snake_body_board_secondhalf,
+            .old_health = this->health,
+            .old_length = this->length,
+            .old_head_idx = this->head_idx,
+            .old_tail_idx = this->tail_idx,
+            .direction = this->direction,
+            .old_done = this->done,
+            .old_just_ate_apple = this->just_ate_apple,
+        };
+
+        // Getting new direction before we increment head idx 
+        this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE];
 
         this->head_idx++;
         this->body_arr[this->head_idx & ARR_SIZE] = idx;
@@ -190,9 +221,9 @@ struct Player {
         this->snake_body_board_firsthalf |= this->snake_head_board_firsthalf;
         this->snake_body_board_secondhalf |= this->snake_head_board_secondhalf;
 
-        // Save current head position
         this->old_head_board_firsthalf = this->snake_head_board_firsthalf;
         this->old_head_board_secondhalf = this->snake_head_board_secondhalf;
+
 
         // Set new head position
         if (idx < 64) {
@@ -203,8 +234,18 @@ struct Player {
             this->snake_head_board_secondhalf = 1ULL << (idx & 63);
             this->snake_head_board_firsthalf = 0ULL;
         }
+
+        // Update apple_location in Move struct if we just ate an apple
+        // if (this->just_ate_apple) {
+        //     move.apple_location = idx;
+        // }
+
+        return move;
     }
 };
+
+
+
 
 
 struct Game {
@@ -329,7 +370,7 @@ struct Game {
     }
     */
 
-    void update_food(Player &player, uint64_t &food_board_firsthalf, uint64_t &food_board_secondhalf) {
+    void update_food(Player &player, uint64_t &food_board_firsthalf, uint64_t &food_board_secondhalf, Move &move) {
         if (player.snake_head_board_firsthalf & food_board_firsthalf || player.snake_body_board_secondhalf & food_board_secondhalf) {
             // remove food from board ; one of the head boards will always be 0
             food_board_firsthalf ^= player.snake_head_board_firsthalf;
@@ -415,13 +456,40 @@ struct Game {
     }
 
 
-    void undo_move(Player &player) {
-        // decrement head and maybe tail 
-        // if done, not done 
-        // if ate apple, not ate apple but depends if ate apple before so might need food_board? 
-        // put back body from decremented tail
-    }
+    void undo_move(Player &player, Move &move, uint64_t &food_board_firsthalf, uint64_t &food_board_secondhalf) {
+        
+        // if the new move just ate an apple, we need to remove it 
+        // if (player.just_ate_apple) {
+        //     food_board_firsthalf |= player.snake_head_board_firsthalf;
+        //     food_board_secondhalf |= player.snake_head_board_secondhalf;
+        // }
 
+        // revert food board
+        food_board_firsthalf = move.old_food_board_firsthalf;
+        food_board_secondhalf = move.old_food_board_secondhalf;
+
+        // revert head position 
+        player.snake_head_board_firsthalf = move.old_head_board_firsthalf;
+        player.snake_head_board_secondhalf = move.old_head_board_secondhalf;
+
+        // revert body board
+        player.snake_body_board_firsthalf = move.old_body_board_firsthalf;
+        player.snake_body_board_secondhalf = move.old_body_board_secondhalf;
+
+        // revert old head board
+        player.old_head_board_firsthalf = move.old_old_head_board_firsthalf;
+        player.old_head_board_secondhalf = move.old_old_head_board_secondhalf;
+
+        // revert index and direction
+        player.head_idx = move.old_head_idx;
+        player.tail_idx = move.old_tail_idx;
+        player.direction = move.direction;
+
+        player.length = move.old_length;
+        player.just_ate_apple = move.old_just_ate_apple;
+        player.done = move.old_done; // believe we can just remove it bc minimax takes care of done positions 
+        player.health = move.old_health;
+    }
 
     int evaluate(Player &me, Player &opponent, int &depth) const {
 
@@ -429,27 +497,6 @@ struct Game {
 
         int my_score = 0;
         int opponent_score = 0;
-
-        // my_score += me.length;
-        // opponent_score += opponent.length; 
-
-        // // my_score += head_score[me.body_arr[me.head_idx]];
-        // // opponent_score += head_score[opponent.body_arr[opponent.head_idx]];
-
-
-        // if (me.done) {
-        //     my_score = -1000 + depth;
-        // }
-        
-        // if (opponent.done) {
-        //     opponent_score = -1000 + depth;
-        // }
-
-        // score += my_score;
-        // score -= opponent_score;
-
-        // return score;
-
 
         if (me.done) {
             my_score += -1000 + depth;
@@ -471,7 +518,17 @@ struct Game {
         return score;
     }
 
-    int minimax(Player &me, Player &opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
+    int minimax(Player &me, Player &opponent, uint64_t &food_board_firsthalf, uint64_t &food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
+
+        // cout << "head " << me.snake_head_board_firsthalf << " " << me.snake_head_board_secondhalf << endl;
+        // cout << "body " << me.snake_body_board_firsthalf << " " << me.snake_body_board_secondhalf << endl;
+        // cout << "old head " << me.old_head_board_firsthalf << " " << me.old_head_board_secondhalf << endl;
+        // cout << "head idx " << me.head_idx << endl;
+        // cout << "tail idx " << me.tail_idx << endl;
+        // cout << "direction " << me.direction << endl;
+        // cout << "food " << food_board_firsthalf << " " << food_board_secondhalf << endl;
+        // cout << endl;
+
 
         if (depth == 0 || me.done || opponent.done){
             if (me.done && opponent.done)
@@ -489,32 +546,34 @@ struct Game {
         const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & ARR_SIZE]];
 
         for (const uint16_t my_move : my_move_board) {
-            uint64_t my_food_board_firsthalf = food_board_firsthalf;
-            uint64_t my_food_board_secondhalf = food_board_secondhalf;
-
-            Player temp_me = me;
-            temp_me.step_by_index(my_move);
-            update_food(temp_me, my_food_board_firsthalf, my_food_board_secondhalf);
+            Move my_move_struct = me.step_by_index(my_move);
+            my_move_struct.old_food_board_firsthalf = food_board_firsthalf;
+            my_move_struct.old_food_board_secondhalf = food_board_secondhalf;
+            update_food(me, food_board_firsthalf, food_board_secondhalf, my_move_struct);
 
             for (const uint16_t opponent_move : opponent_move_board) {
-                uint64_t opponent_food_board_firsthalf = food_board_firsthalf;
-                uint64_t opponent_food_board_secondhalf = food_board_secondhalf;
+                
+                Move opponent_move_struct = opponent.step_by_index(opponent_move);
+                opponent_move_struct.old_food_board_firsthalf = food_board_firsthalf;
+                opponent_move_struct.old_food_board_secondhalf = food_board_secondhalf;
+                update_food(opponent, food_board_firsthalf, food_board_secondhalf, opponent_move_struct);
 
-                Player temp_opponent = opponent;
-                temp_opponent.step_by_index(opponent_move);
-                update_food(temp_opponent, opponent_food_board_firsthalf, opponent_food_board_secondhalf);
-
-                update_positions(temp_me, temp_opponent);
+                update_positions(me, opponent);
                 nodes_visited++;
-                int score = minimax(temp_me, temp_opponent, my_food_board_firsthalf & opponent_food_board_firsthalf, my_food_board_secondhalf & opponent_food_board_secondhalf, depth - 1, alpha, beta, nodes_visited);
+                int score = minimax(me, opponent, food_board_firsthalf, food_board_secondhalf, depth - 1, alpha, beta, nodes_visited);
+
+                undo_move(opponent, opponent_move_struct, food_board_firsthalf, food_board_secondhalf); // Undo opponent's move
+
                 best_min_score = min(best_min_score, score);
                 best_max_score = max(best_max_score, score);
                 alpha = max(alpha, best_max_score);
                 beta = min(beta, best_min_score);
 
-                if (alpha >= beta)
+                if (alpha >= beta){
                     break;
+                }
             }
+            undo_move(me, my_move_struct, food_board_firsthalf, food_board_secondhalf); // Undo 'me's move
         }
         return best_max_score;
     }
@@ -533,29 +592,26 @@ struct Game {
 
         while (depth < max_depth) {
             for (const uint16_t my_move : my_move_board) {
-                uint64_t my_food_board_firsthalf = food_board_firsthalf;
-                uint64_t my_food_board_secondhalf = food_board_secondhalf;
-
-                Player temp_me = me;
-                temp_me.step_by_index(my_move);
-                update_food(temp_me, my_food_board_firsthalf, my_food_board_secondhalf);
+                Move my_move_struct = me.step_by_index(my_move);
+                update_food(me, food_board_firsthalf, food_board_secondhalf, my_move_struct);
 
                 for (const uint16_t opponent_move : opponent_move_board) {
-                    uint64_t opponent_food_board_firsthalf = food_board_firsthalf;
-                    uint64_t opponent_food_board_secondhalf = food_board_secondhalf;
-
-                    Player temp_opponent = opponent;
-                    temp_opponent.step_by_index(opponent_move);
-                    update_food(temp_opponent, opponent_food_board_firsthalf, opponent_food_board_secondhalf);
-                    update_positions(temp_me, temp_opponent);
+                    Move opponent_move_struct = opponent.step_by_index(opponent_move);
+                    update_food(opponent, food_board_firsthalf, food_board_secondhalf, opponent_move_struct);
+                    
+                    update_positions(me, opponent);
                     nodes_visited++;
-                    int score = minimax(temp_me, temp_opponent, my_food_board_firsthalf & opponent_food_board_firsthalf, my_food_board_secondhalf & opponent_food_board_secondhalf, depth, INT32_MIN, INT32_MAX, nodes_visited);
+
+                    int score = minimax(me, opponent, food_board_firsthalf, food_board_secondhalf, depth, INT32_MIN, INT32_MAX, nodes_visited);
+                    
+                    undo_move(opponent, opponent_move_struct, food_board_firsthalf, food_board_secondhalf); // Undo opponent's move
                     
                     if (score > best_score) {
                         best_score = score;
                         best_move = my_move;
                     }
                 }
+                undo_move(me, my_move_struct, food_board_firsthalf, food_board_secondhalf); // Undo 'me's move
             }
             depth++;
         }
@@ -752,10 +808,10 @@ int main()
         if (turn != 0){
             // exit(0);
             // has to be before updating food
-            game.me.step_by_index(my_prev_move);
-            game.opponent.step_by_index(opponent_idx);
-            game.update_food(game.me, game.food_board_firsthalf, game.food_board_secondhalf);
-            game.update_food(game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
+            Move me_move_struct = game.me.step_by_index(my_prev_move);
+            Move opp_move_struct = game.opponent.step_by_index(opponent_idx);
+            game.update_food(game.me, game.food_board_firsthalf, game.food_board_secondhalf, me_move_struct);
+            game.update_food(game.opponent, game.food_board_firsthalf, game.food_board_secondhalf, opp_move_struct);
             game.update_positions(game.me, game.opponent);
 
             game.food_board_firsthalf = food_board_firsthalf;
@@ -823,14 +879,14 @@ int main()
         
         uint64_t temp_food_firsthalf = food_board_firsthalf;
         uint64_t temp_food_secondhalf = food_board_secondhalf;
-        game.me.step_by_index(my_prev_move);
-        game.opponent.step_by_index(opponent_idx);
-        game.update_food(game.me, temp_food_firsthalf, temp_food_secondhalf);
+        Move me_move_struct = game.me.step_by_index(my_prev_move);
+        Move opp_move_struct = game.opponent.step_by_index(opponent_idx);
+        game.update_food(game.me, temp_food_firsthalf, temp_food_secondhalf, me_move_struct);
 
         temp_food_firsthalf = food_board_firsthalf;
         temp_food_secondhalf = food_board_secondhalf;
 
-        game.update_food(game.opponent, temp_food_firsthalf, temp_food_secondhalf);
+        game.update_food(game.opponent, temp_food_firsthalf, temp_food_secondhalf, opp_move_struct);
         game.update_positions(game.me, game.opponent);
 
         game.food_board_firsthalf = food_board_firsthalf;
