@@ -19,3 +19,7 @@
 
 # clang faster than g++
 * 22% improvement 
+
+# pairs of 64bit ints 
+* 20% improvement
+* might be because of native support and library overhead of 128bit 

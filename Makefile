@@ -1,6 +1,6 @@
 # CXX = g++
 CXX = clang++-15
-CXXFLAGS = -Ofast
+CXXFLAGS = -O3 -march=native
 LIBS = -lpthread
 
 server.out: server.cpp
