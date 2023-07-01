@@ -8,7 +8,6 @@
 
 using namespace std;
 
-const uint32_t HASH_SIZE = 4294967295; // 2^32 - 1
 const uint16_t ARR_SIZE = 127; // 2^7 - 1 
 
 const uint16_t BOARD_SIZE = 11;
@@ -29,7 +28,8 @@ enum Direction {
 
 // trying to flatten (3d -> 2d array) yields no results 
 vector<uint16_t> precompute_moves[4][121];
-
+// array of precomputed moves based on direction and index of snake head
+// number of moves can vary based on where snake is on the board ex. top left corner/ bottom right corner
 void precomp_moves() {
     for (uint16_t direction = LEFT; direction <= DOWN; direction++) {
         for (uint16_t i = 0; i <= 120; i++) {
@@ -57,69 +57,6 @@ void precomp_moves() {
         }
     }
 }
-
-
-enum Hash_Flag {
-    EXACT,
-    ALPHA,
-    BETA
-};
-
-
-struct tt {
-    uint64_t hash_key;
-    Hash_Flag flag;
-    int depth;
-    int value;
-};
-
-
-// struct hash {
-//     uint64_t hash_key;
-//     // me, opponent, food
-//     uint64_t marker_keys[3][121];
-//     tt hash_table[HASH_SIZE];
-
-//     hash() {
-//         this->hash_key = 0;
-//     }
-
-//     void init_random_keys() {
-//         random_device rd;
-//         mt19937_64 gen(rd());
-//         uniform_int_distribution<uint64_t> dis;
-
-//         for (int i = 0; i < 3; i++) {
-//             for (int j = 0; j < 121; j++) {
-//                 this->marker_keys[i][j] = dis(gen);
-//             }
-//         }
-//     }
-    
-//     // for starting position 
-//     uint64_t generate_hash_key(Player me, Player opponent, uint128_t food_board) {
-
-//     }
-
-
-//     void clear_hash_table() {
-//         for (int i = 0; i < HASH_SIZE; i++) {
-//             hash_table[i].hash_key = 0ULL;
-//             hash_table[i].flag = EXACT;
-//             hash_table[i].depth = 0;
-//             hash_table[i].value = 0;
-//         }
-//     }
-
-
-//     void write_hash_entry(Hash_Flag flag, int depth, int value) {
-//         tt *hash_entry = &hash_table[hash_key & HASH_SIZE];
-
-//         hash_entry->hash_key = hash_key;
-//     }
-
-
-// };
 
 // using size 11 board for offset 
 Direction direction_lookup[2 * BOARD_SIZE + 1];
@@ -160,6 +97,9 @@ struct Player {
         this->done = false;
         this->just_ate_apple = false;
 
+        // snake is 3 long at the start but only occupies 1 spot on the board. 
+        // to make it 3 long, we offset the head idx by 2
+        // whenever we call the update food function and xor the tail with the body, it will 'mess up' the first call but then correct itself afterwards 
         this->head_idx = 2;
         this->tail_idx = 0;
         this->body_arr[this->head_idx] = starting_idx; 
@@ -195,6 +135,7 @@ struct Player {
         this->old_head_board_secondhalf = this->snake_head_board_secondhalf;
 
         // Set new head position
+        // always will have one of the two set to 0
         if (idx < 64) {
             this->snake_head_board_firsthalf = 1ULL << idx;
             this->snake_head_board_secondhalf = 0ULL;
@@ -414,42 +355,12 @@ struct Game {
         }
     }
 
-
-    void undo_move(Player &player) {
-        // decrement head and maybe tail 
-        // if done, not done 
-        // if ate apple, not ate apple but depends if ate apple before so might need food_board? 
-        // put back body from decremented tail
-    }
-
-
     int evaluate(Player &me, Player &opponent, int &depth) const {
 
         int score = 0;
 
         int my_score = 0;
         int opponent_score = 0;
-
-        // my_score += me.length;
-        // opponent_score += opponent.length; 
-
-        // // my_score += head_score[me.body_arr[me.head_idx]];
-        // // opponent_score += head_score[opponent.body_arr[opponent.head_idx]];
-
-
-        // if (me.done) {
-        //     my_score = -1000 + depth;
-        // }
-        
-        // if (opponent.done) {
-        //     opponent_score = -1000 + depth;
-        // }
-
-        // score += my_score;
-        // score -= opponent_score;
-
-        // return score;
-
 
         if (me.done) {
             my_score += -1000 + depth;
@@ -472,7 +383,6 @@ struct Game {
     }
 
     int minimax(Player &me, Player &opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
-
         if (depth == 0 || me.done || opponent.done){
             if (me.done && opponent.done)
                 return -1000 + depth;
@@ -531,6 +441,7 @@ struct Game {
         const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & ARR_SIZE]];
         const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & ARR_SIZE]];
 
+        // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
         while (depth < max_depth) {
             for (const uint16_t my_move : my_move_board) {
                 uint64_t my_food_board_firsthalf = food_board_firsthalf;
@@ -564,46 +475,6 @@ struct Game {
     }
 };
 
-
-void testing() {
-    Game game;
-
-    uint16_t my_starting_idx = 61; // 12 // 61
-    uint16_t opponent_starting_idx = 59; // 20
-    
-    uint16_t food[] = {8, 2, 60, 83, 81};
-    uint64_t food_board_firsthalf = 0ULL;
-    uint64_t food_board_secondhalf = 0ULL;
-
-    for (uint16_t f : food) {
-        if (f < 64)
-            food_board_firsthalf |= 1ULL << f;
-        else
-            food_board_secondhalf |= 1ULL << (f & 63);
-    }
-
-    game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board_firsthalf, food_board_secondhalf);
-    game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
-
-    // for (int i = 1; i < 6; i++) {
-    //     game.me.step_by_index(61 + (11 * i));
-    //     game.update_food(game.me, game.food_board);
-
-    //     game.opponent.step_by_index(59 + (11 * i));
-    //     game.update_food(game.opponent, game.food_board);
-        
-    //     game.update_positions(game.me, game.opponent);
-
-    //     game.print_board(game.me, game.opponent, game.food_board);
-    // }
-
-
-    // uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 2);
-    // game.me.step_by_index(move);
-
-}
-
-
 void benchmark() {
     Game game;
 
@@ -623,27 +494,21 @@ void benchmark() {
     }
 
     game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board_firsthalf, food_board_secondhalf);
-    // game.print_board(game.me, game.opponent, game.food_board);
+    // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
 
     auto start_time = chrono::high_resolution_clock::now();
     uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf, 15);
 
-    // auto end_time = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count();
     auto end_time = chrono::high_resolution_clock::now();
     double time_taken = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
     cout << "total time: " << time_taken << endl;
-    
 }
 
 
-int main()
-{
+int main() {
 
     precomp_moves();
     init_direction_lookup();
-
-    // testing();
-    // exit(0);
 
     benchmark();
     exit(0);
@@ -657,6 +522,7 @@ int main()
 
     uint16_t my_prev_move;
 
+
     CROW_ROUTE(app, "/")([](){
         crow::json::wvalue data;
         data["apiversion"] = "1";
@@ -667,7 +533,6 @@ int main()
 
         return data;
     });
-
 
 
     CROW_ROUTE(app, "/start")
@@ -713,7 +578,6 @@ int main()
     });
 
     
-
     CROW_ROUTE(app, "/move")
     .methods("POST"_method)
     ([&](const crow::request& req){
@@ -748,9 +612,8 @@ int main()
                 food_board_secondhalf |= 1ULL << (val & 63);
         }
 
-        //should try and update opponent move and my previous move that i sent to the server 
+        //should try and update opponent move and my previous move that i sent to the server  at same time 
         if (turn != 0){
-            // exit(0);
             // has to be before updating food
             game.me.step_by_index(my_prev_move);
             game.opponent.step_by_index(opponent_idx);
@@ -770,7 +633,6 @@ int main()
         my_prev_move = move_idx; // will actually move the snake later with opponent 
         // get the direction which ai picked from the index 
         int dir = direction_lookup[move_idx - game.me.body_arr[(game.me.head_idx) & ARR_SIZE] + 11];
-        // cout << "Move is " << dir << endl;
 
         crow::json::wvalue data;
         switch(dir) {
@@ -789,7 +651,6 @@ int main()
 
         return data;
     });
-
 
 
     CROW_ROUTE(app, "/end")
@@ -820,7 +681,6 @@ int main()
                 food_board_secondhalf |= 1ULL << (val & 63);
         }
         
-        
         uint64_t temp_food_firsthalf = food_board_firsthalf;
         uint64_t temp_food_secondhalf = food_board_secondhalf;
         game.me.step_by_index(my_prev_move);
@@ -842,8 +702,5 @@ int main()
         return "";
     });
 
-    // app.port(8080).run();
-
     app.port(8080).multithreaded().run();
-
 }
