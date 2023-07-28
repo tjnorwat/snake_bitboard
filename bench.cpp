@@ -117,7 +117,7 @@ struct Player {
         this->snake_body_board_secondhalf = 0ULL;
     }
 
-    void step_by_index(uint16_t idx) {
+    void step_by_index(const uint16_t &idx) {
         // getting new direction before we increment head idx 
         this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; // unordered map is worse 
 
@@ -304,7 +304,7 @@ struct Game {
     }
 
    // check if we run into wall, ourselves/opponent, or health is 0
-   void check_if_done(Player &player, uint64_t all_boards_firsthalf, uint64_t all_boards_secondhalf) {
+   void check_if_done(Player &player, const uint64_t &all_boards_firsthalf, const uint64_t &all_boards_secondhalf) {
         if (player.old_head_board_firsthalf) {
             if ((player.old_head_board_firsthalf & LEFT_COL_FIRSTHALF && player.direction == LEFT) ||
                 (player.old_head_board_firsthalf & RIGHT_COL_FIRSTHALF && player.direction == RIGHT) ||
@@ -353,7 +353,7 @@ struct Game {
         }
     }
 
-    int evaluate(Player &me, Player &opponent, int &depth) const {
+    int evaluate(const Player &me, const Player &opponent, const int &depth) const {
 
         int score = 0;
 
@@ -380,7 +380,7 @@ struct Game {
         return score;
     }
 
-    int minimax(Player &me, Player &opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
+    int minimax(Player &me, Player &opponent, const uint64_t food_board_firsthalf, const uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
         if (depth == 0 || me.done || opponent.done){
             if (me.done && opponent.done)
                 return -1000 + depth;

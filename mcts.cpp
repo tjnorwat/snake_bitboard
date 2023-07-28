@@ -6,6 +6,26 @@
 
 using namespace std;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const uint16_t ARR_SIZE = 127; // 2^7 - 1 
 
 const uint16_t BOARD_SIZE = 11;
@@ -117,7 +137,7 @@ struct Player {
         this->snake_body_board_secondhalf = 0ULL;
     }
 
-    void step_by_index(uint16_t idx) {
+    void step_by_index(const uint16_t &idx) {
         // getting new direction before we increment head idx 
         this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; // unordered map is worse 
 
@@ -304,7 +324,7 @@ struct Game {
     }
 
    // check if we run into wall, ourselves/opponent, or health is 0
-   void check_if_done(Player &player, uint64_t all_boards_firsthalf, uint64_t all_boards_secondhalf) {
+   void check_if_done(Player &player, const uint64_t &all_boards_firsthalf, const uint64_t &all_boards_secondhalf) {
         if (player.old_head_board_firsthalf) {
             if ((player.old_head_board_firsthalf & LEFT_COL_FIRSTHALF && player.direction == LEFT) ||
                 (player.old_head_board_firsthalf & RIGHT_COL_FIRSTHALF && player.direction == RIGHT) ||
@@ -353,7 +373,7 @@ struct Game {
         }
     }
 
-    int evaluate(Player &me, Player &opponent, int &depth) const {
+    int evaluate(const Player &me, const Player &opponent, const int &depth) const {
 
         int score = 0;
 
@@ -380,7 +400,7 @@ struct Game {
         return score;
     }
 
-    int minimax(Player &me, Player &opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
+    int minimax(Player &me, Player &opponent, const uint64_t food_board_firsthalf, const uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
         if (depth == 0 || me.done || opponent.done){
             if (me.done && opponent.done)
                 return -1000 + depth;
@@ -473,6 +493,125 @@ struct Game {
     }
 };
 
+
+
+
+
+
+struct TreeNode {
+
+    Game game;
+    bool is_terminal;
+    TreeNode *parent;
+    int num_visits;
+    int total_score;
+    vector<TreeNode *> children;
+    bool is_fully_expanded;
+
+    TreeNode() {}
+
+    TreeNode(Game game, TreeNode *parent) {
+        
+        // initialize game
+        this->game = game;
+
+        // is node terminal 
+        if (game.me.done || game.opponent.done)
+            this->is_terminal = true;
+        else
+            this->is_terminal = false;
+
+        // set fully expanded flag
+        this->is_fully_expanded = this->is_terminal;
+
+        // init parent node  if available 
+        this->parent = parent;
+
+        // init the number of node visits
+        this->num_visits = 0;
+
+        // init the total score of the node 
+        this->total_score = 0;
+
+        // init current node's children 
+        this->children = vector<TreeNode *>();
+    }
+
+};
+
+
+
+struct MCTS {
+
+
+
+    TreeNode *root;
+
+    MCTS(Game game) {
+        this->root = new TreeNode(game, nullptr);
+    }
+
+    void run() {
+        while (true) {
+            TreeNode *node = select(root);
+            int score = simulate(node);
+            backpropagate(node, score);
+        }
+    }
+
+    TreeNode *select(TreeNode *node) {
+        while (!node->is_terminal) {
+            if (node->is_fully_expanded)
+                node = get_best_move(node);
+            else 
+                return expand(node);
+        }
+        return node;
+    }
+
+    TreeNode *expand(TreeNode *node) {
+        TreeNode *child = pick_unvisited_child(node);
+        return child;
+    }
+
+    TreeNode *get_best_move(TreeNode *node) {
+        return node;
+    }
+
+    TreeNode *pick_unvisited_child(TreeNode *node) {
+        return node;
+    }
+
+    int simulate(TreeNode *node) {
+        return 0;
+    }
+
+    void backpropagate(TreeNode *node, int score) {
+
+    }
+
+
+
+    ~MCTS() {
+        delete root;
+    }
+
+
+
+};
+
+
+
+void monte() {
+
+
+
+}
+
+
+
+
+
 void benchmark() {
     Game game;
 
@@ -508,7 +647,10 @@ int main() {
     precomp_moves();
     init_direction_lookup();
 
-    benchmark();
+
+    monte();
+
+    // benchmark();
 
     return 0;
 }
