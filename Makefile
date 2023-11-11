@@ -1,17 +1,17 @@
 # CXX = g++
-CXX = clang++-15
+CXX = clang++
 CXXFLAGS = -O3 -march=native
 
 # for crow.cpp
 # LIBS = -lpthread
 
-mcts.out: mcts.cpp
+bench.out: bench.cpp
 	$(CXX) $(CXXFLAGS) $^ $(LIBS) -o $@
 
 .PHONY: run
-run: mcts.out
-	./mcts.out
+run: bench.out
+	./bench.out
 
 .PHONY: clean
 clean:
-	rm -f mcts.out
+	rm -f bench.out

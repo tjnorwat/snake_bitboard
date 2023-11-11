@@ -321,10 +321,10 @@ uint16_t Game::find_best_move() {
     int depth = 0;
     auto start_time = chrono::high_resolution_clock::now();
 
-    
-
+    int max_depth = 15;
+    int nodes_visited = 0;
     // will have to figure out how to get possible moves for players 
-    while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 300) {
+    while (depth < max_depth) {
         cout << "TIME " << (chrono::high_resolution_clock::now() - start_time).count() << endl;
         while(my_move_board) {
             uint16_t my_move = boost::multiprecision::lsb(my_move_board);
@@ -340,7 +340,7 @@ uint16_t Game::find_best_move() {
                 copy_opponent.step_by_index(opponent_move);
 
                 int move_val = minimax(copy_me, copy_opponent, copy_food_board, depth, INT32_MIN, INT32_MAX, false);
-
+                nodes_visited++;
                 if (move_val > best_val){
                     best_val = move_val;
                     best_move = my_move;
@@ -358,6 +358,7 @@ uint16_t Game::find_best_move() {
     }
 
     this->me.step_by_index(best_move);
+    cout << "nodes visited " << nodes_visited << endl;
     // i think the idea is to have the best move be the board position of the head and then calculate action/direction
     return best_move;
 }

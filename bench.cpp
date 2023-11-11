@@ -6,16 +6,16 @@
 
 using namespace std;
 
-const uint16_t ARR_SIZE = 127; // 2^7 - 1 
+static constexpr uint16_t ARR_SIZE = 127; // 2^7 - 1 
 
-const uint16_t BOARD_SIZE = 11;
+static constexpr uint16_t BOARD_SIZE = 11;
 
-const uint64_t LEFT_COL_FIRSTHALF = 18023198899569664ULL;
-const uint64_t LEFT_COL_SECONDHALF = 72092795598278658ULL;
-const uint64_t RIGHT_COL_FIRSTHALF = 36046397799139329ULL;
-const uint64_t RIGHT_COL_SECONDHALF = 70403120701444ULL;
-const uint64_t TOP_ROW = 144044819331678208ULL;
-const uint64_t BOTTOM_ROW = 2047ULL;
+static constexpr uint64_t LEFT_COL_FIRSTHALF = 18023198899569664ULL;
+static constexpr uint64_t LEFT_COL_SECONDHALF = 72092795598278658ULL;
+static constexpr uint64_t RIGHT_COL_FIRSTHALF = 36046397799139329ULL;
+static constexpr uint64_t RIGHT_COL_SECONDHALF = 70403120701444ULL;
+static constexpr uint64_t TOP_ROW = 144044819331678208ULL;
+static constexpr uint64_t BOTTOM_ROW = 2047ULL;
 
 enum Direction {
     LEFT,
@@ -24,13 +24,28 @@ enum Direction {
     DOWN
 };
 
+// precomputed wall collisions for each direction and index of previous snake head
+bool precompute_wall_collisions[4][BOARD_SIZE * BOARD_SIZE];
+void precomp_wall_collisions() {
+    for (uint16_t i = 0; i < BOARD_SIZE * BOARD_SIZE; ++i) {
+        int inverted_index = BOARD_SIZE * BOARD_SIZE - 1 - i; // Invert index to match LSB to MSB representation
+        int row = inverted_index / BOARD_SIZE;
+        int col = inverted_index % BOARD_SIZE;
+
+        precompute_wall_collisions[LEFT][i] = (col == 0);
+        precompute_wall_collisions[RIGHT][i] = (col == BOARD_SIZE - 1);
+        precompute_wall_collisions[UP][i] = (row == 0);
+        precompute_wall_collisions[DOWN][i] = (row == BOARD_SIZE - 1);
+    }
+}
+
 // trying to flatten (3d -> 2d array) yields no results 
-vector<uint16_t> precompute_moves[4][121];
+vector<uint16_t> precompute_moves[4][BOARD_SIZE * BOARD_SIZE];
 // array of precomputed moves based on direction and index of snake head
 // number of moves can vary based on where snake is on the board ex. top left corner/ bottom right corner
 void precomp_moves() {
     for (uint16_t direction = LEFT; direction <= DOWN; direction++) {
-        for (uint16_t i = 0; i <= 120; i++) {
+        for (uint16_t i = 0; i < 121; i++) {
             switch (direction) {
                 case LEFT:
                     if (i >= BOARD_SIZE) precompute_moves[direction][i].push_back(i - BOARD_SIZE);
@@ -51,6 +66,7 @@ void precomp_moves() {
                     if (i >= BOARD_SIZE) precompute_moves[direction][i].push_back(i - BOARD_SIZE);
                     if (i > 0) precompute_moves[direction][i].push_back(i - 1);
                     if (i < 120) precompute_moves[direction][i].push_back(i + 1);
+                    break;
             }
         }
     }
@@ -62,11 +78,11 @@ Direction direction_lookup[2 * BOARD_SIZE + 1];
 void init_direction_lookup() {
     direction_lookup[1 + BOARD_SIZE] = LEFT;
     direction_lookup[-1 + BOARD_SIZE] = RIGHT;
-    direction_lookup[11 + BOARD_SIZE] = UP;
-    direction_lookup[-11 + BOARD_SIZE] = DOWN;
+    direction_lookup[BOARD_SIZE + BOARD_SIZE] = UP;
+    direction_lookup[-BOARD_SIZE + BOARD_SIZE] = DOWN;
 }
 
-struct Player {
+struct alignas(64) Player {
     int16_t health;
     uint16_t length;
     Direction direction;
@@ -88,49 +104,32 @@ struct Player {
 
     Player() {}
 
-    Player(uint16_t starting_idx) {
-        this->health = 100;
-        this->length = 3;
-        this->direction = UP;
-        this->done = false;
-        this->just_ate_apple = false;
+    Player(uint16_t starting_idx) : health(100), length(3), direction(UP), snake_head_board_firsthalf(0ULL), snake_head_board_secondhalf(0ULL),
+        snake_body_board_firsthalf(0ULL), snake_body_board_secondhalf(0ULL), head_idx(2), tail_idx(0), done(false), just_ate_apple(false) {
 
         // snake is 3 long at the start but only occupies 1 spot on the board. 
         // to make it 3 long, we offset the head idx by 2
         // whenever we call the update food function and xor the tail with the body, it will 'mess up' the first call but then correct itself afterwards 
-        this->head_idx = 2;
-        this->tail_idx = 0;
         this->body_arr[this->head_idx] = starting_idx; 
 
-        if (starting_idx < 64) {
+        if (starting_idx < 64)
             this->snake_head_board_firsthalf = 1ULL << starting_idx;
-            this->snake_head_board_secondhalf = 0ULL;
-        } 
-        else {
-            this->snake_head_board_firsthalf = 0ULL;
+        else
             this->snake_head_board_secondhalf = 1ULL << (starting_idx & 63);
-        }
-
-        this->old_head_board_firsthalf = 0ULL;
-        this->old_head_board_secondhalf = 0ULL;
-        this->snake_body_board_firsthalf = 0ULL;
-        this->snake_body_board_secondhalf = 0ULL;
     }
 
     void step_by_index(const uint16_t &idx) {
         // getting new direction before we increment head idx 
-        this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; // unordered map is worse 
-
-        this->head_idx++;
-        this->body_arr[this->head_idx & ARR_SIZE] = idx;
-
-        // Add current head position to body board
-        this->snake_body_board_firsthalf |= this->snake_head_board_firsthalf;
-        this->snake_body_board_secondhalf |= this->snake_head_board_secondhalf;
+        // unordered map and switch statement are worse
+        this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; 
 
         // Save current head position
         this->old_head_board_firsthalf = this->snake_head_board_firsthalf;
         this->old_head_board_secondhalf = this->snake_head_board_secondhalf;
+
+        // Add current head position to body board
+        this->snake_body_board_firsthalf |= this->snake_head_board_firsthalf;
+        this->snake_body_board_secondhalf |= this->snake_head_board_secondhalf;
 
         // Set new head position
         // always will have one of the two set to 0
@@ -140,6 +139,49 @@ struct Player {
         }
         else { 
             this->snake_head_board_secondhalf = 1ULL << (idx & 63);
+            this->snake_head_board_firsthalf = 0ULL;
+        }
+
+        this->head_idx++;
+        this->body_arr[this->head_idx & ARR_SIZE] = idx;
+    }
+
+    void step_by_direction(Direction dir) {
+        // getting new index before we increment head idx
+        uint16_t current_idx = this->body_arr[this->head_idx & ARR_SIZE];
+        uint16_t new_idx;
+
+        switch (dir) {
+            case LEFT:
+                new_idx = (current_idx % BOARD_SIZE == 0) ? current_idx : current_idx + 1;
+                break;
+            case RIGHT:
+                new_idx = (current_idx % BOARD_SIZE == BOARD_SIZE - 1) ? current_idx : current_idx - 1;
+                break;
+            case UP:
+                new_idx = (current_idx < BOARD_SIZE) ? current_idx : current_idx + BOARD_SIZE;
+                break;
+            default:
+                new_idx = (current_idx >= 121 - BOARD_SIZE) ? current_idx : current_idx - BOARD_SIZE;
+                break;
+        }
+
+        this->direction = dir;
+        this->head_idx++;
+        this->body_arr[this->head_idx & ARR_SIZE] = new_idx;
+
+        // Add current head position to body board
+        this->snake_body_board_firsthalf |= this->snake_head_board_firsthalf;
+        this->snake_body_board_secondhalf |= this->snake_head_board_secondhalf;
+
+        // Set new head position
+        // always will have one of the two set to 0
+        if (new_idx < 64) {
+            this->snake_head_board_firsthalf = 1ULL << new_idx;
+            this->snake_head_board_secondhalf = 0ULL;
+        }
+        else {
+            this->snake_head_board_secondhalf = 1ULL << (new_idx & 63);
             this->snake_head_board_firsthalf = 0ULL;
         }
     }
@@ -153,11 +195,7 @@ struct Game {
     uint64_t food_board_firsthalf;
     uint64_t food_board_secondhalf;
 
-    Game() {
-        this->total_turns = 0;
-        this->food_board_firsthalf = 0ULL;
-        this->food_board_secondhalf = 0ULL;
-    }
+    Game(): total_turns(0), food_board_firsthalf(0ULL), food_board_secondhalf(0ULL) {}
 
     // prints out me, opponent, and food boards
     void print_board(Player me, Player opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) const {
@@ -226,6 +264,37 @@ struct Game {
         cout << endl;
     }
 
+    
+    void print_player_board(Player player) const {
+        cout << "player length " << player.length << endl;
+        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
+            for (int j = BOARD_SIZE - 1; j >= 0; --j) {
+                int idx = i * BOARD_SIZE + j;
+                if (idx < 64) {
+                    uint64_t val = 1ULL << idx;
+                    if (player.snake_head_board_firsthalf & val)
+                        cout << "H ";
+                    else if (player.snake_body_board_firsthalf & val)
+                        cout << "B ";
+                    else
+                        cout << "| ";
+                }
+                else {
+                    uint64_t val = 1ULL << (idx & 63);
+                    if (player.snake_head_board_secondhalf & val)
+                        cout << "H ";
+                    else if (player.snake_body_board_secondhalf & val)
+                        cout << "B ";
+                    else
+                        cout << "| ";
+                }
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+
+
     // for the /start endpoint 
     void set_starting_position(uint16_t mysnake_idx, uint16_t opponent_idx, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) {
         this->me = Player(mysnake_idx);
@@ -233,40 +302,6 @@ struct Game {
         this->food_board_firsthalf = food_board_firsthalf;
         this->food_board_secondhalf = food_board_secondhalf;
     }
-
-    // wont get the last couple msb for first 3 moves, but shouldnt matter 
-    // need to add num_food_on_board to update_food()
-    // need to figure out how to not use lsb function
-    // would need to redo this with pairs of 64bit boards
-    /*
-    void get_food() {
-        
-        // dont need to xor msb's since free spots only goes up to 120 
-        uint128_t all_boards = ~(this->me.snake_body_board | this->me.snake_head_board | this->opponent.snake_body_board | this->opponent.snake_head_board);
-
-        // 0-120 inclusive 
-        uint16_t free_spots = 120 - this->num_food_on_board - this->me.length - this->opponent.length;
-
-        // since we know the number of free idxs, we can generate a random number from 0 to free_idx and stop at that number
-        random_device rd;
-        mt19937 rng(rd());
-        uniform_int_distribution<size_t> dist(0, free_spots);
-        size_t random_idx = dist(rng);
-
-        // idea is to go up to the random idx without having to go through whole board
-        for (int i = 0; i < random_idx; i++) {
-            uint16_t idx = boost::multiprecision::lsb(all_boards);
-            all_boards ^= uint128_t(1) << idx;
-        }
-
-        // can we always guarantee that there will be a place? 
-        if (all_boards) {
-            uint16_t idx = boost::multiprecision::lsb(all_boards);
-            this->food_board |= uint128_t(1) << idx;
-            this->num_food_on_board++;
-        }
-    }
-    */
 
     void update_food(Player &player, uint64_t &food_board_firsthalf, uint64_t &food_board_secondhalf) {
         if (player.snake_head_board_firsthalf & food_board_firsthalf || player.snake_body_board_secondhalf & food_board_secondhalf) {
@@ -304,31 +339,22 @@ struct Game {
     }
 
    // check if we run into wall, ourselves/opponent, or health is 0
-   void check_if_done(Player &player, const uint64_t &all_boards_firsthalf, const uint64_t &all_boards_secondhalf) {
-        if (player.old_head_board_firsthalf) {
-            if ((player.old_head_board_firsthalf & LEFT_COL_FIRSTHALF && player.direction == LEFT) ||
-                (player.old_head_board_firsthalf & RIGHT_COL_FIRSTHALF && player.direction == RIGHT) ||
-                (player.old_head_board_firsthalf & BOTTOM_ROW && player.direction == DOWN) ||
-                (player.snake_head_board_firsthalf & all_boards_firsthalf) ||
-                (player.snake_head_board_secondhalf & all_boards_secondhalf) || // need to account for head board being in first/second half
-                (player.health <= 0)) {
-                    player.done = true;
-                }
+   // can inline this later
+    void check_if_done(Player &player, const uint64_t &all_boards_firsthalf, const uint64_t &all_boards_secondhalf) {
+        if (precompute_wall_collisions[player.direction][player.body_arr[(player.head_idx - 1) & ARR_SIZE]] ||
+            (player.snake_head_board_firsthalf & all_boards_firsthalf) ||
+            (player.snake_head_board_secondhalf & all_boards_secondhalf) ||
+            (player.health <= 0)) {
+            player.done = true;
         }
-        else {
-            if ((player.old_head_board_secondhalf & LEFT_COL_SECONDHALF && player.direction == LEFT) ||
-                (player.old_head_board_secondhalf & RIGHT_COL_SECONDHALF && player.direction == RIGHT) ||
-                (player.old_head_board_secondhalf & TOP_ROW && player.direction == UP) ||
-                (player.snake_head_board_firsthalf & all_boards_firsthalf) ||
-                (player.snake_head_board_secondhalf & all_boards_secondhalf) ||
-                (player.health <= 0)) {
-                    player.done = true;
-                }
-        }
-   }
+    }
 
     // update if we die
     void update_positions(Player &me, Player &opponent) {
+
+        // TODO : check wall first because if we also run into opponent body when they hit wall, we dont die (still need to implement)
+
+
         const uint64_t all_boards_firsthalf = me.snake_body_board_firsthalf | opponent.snake_body_board_firsthalf;
         const uint64_t all_boards_secondhalf = me.snake_body_board_secondhalf | opponent.snake_body_board_secondhalf;
 
@@ -357,25 +383,25 @@ struct Game {
 
         int score = 0;
 
-        int my_score = 0;
-        int opponent_score = 0;
+        // int my_score = 0;
+        // int opponent_score = 0;
 
-        if (me.done) {
-            my_score += -1000 + depth;
-        }
-        else if (me.just_ate_apple) {
-            my_score += 100 - depth;
-        }
+        // if (me.done) {
+        //     my_score += -1000 + depth;
+        // }
+        // else if (me.just_ate_apple) {
+        //     my_score += 100 - depth;
+        // }
 
-        if (opponent.done) {
-            opponent_score += 1000 - depth;
-        }
-        else if (opponent.just_ate_apple) {
-            opponent_score += -100 + depth;
-        }
+        // if (opponent.done) {
+        //     opponent_score += 1000 - depth;
+        // }
+        // else if (opponent.just_ate_apple) {
+        //     opponent_score += -100 + depth;
+        // }
 
-        score += my_score;
-        score += opponent_score;
+        // score += my_score;
+        // score += opponent_score;
 
         return score;
     }
@@ -396,7 +422,7 @@ struct Game {
         const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & ARR_SIZE]];
         const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & ARR_SIZE]];
 
-        for (const uint16_t my_move : my_move_board) {
+        for (const uint16_t& my_move : my_move_board) {
             uint64_t my_food_board_firsthalf = food_board_firsthalf;
             uint64_t my_food_board_secondhalf = food_board_secondhalf;
 
@@ -404,7 +430,7 @@ struct Game {
             temp_me.step_by_index(my_move);
             update_food(temp_me, my_food_board_firsthalf, my_food_board_secondhalf);
 
-            for (const uint16_t opponent_move : opponent_move_board) {
+            for (const uint16_t& opponent_move : opponent_move_board) {
                 uint64_t opponent_food_board_firsthalf = food_board_firsthalf;
                 uint64_t opponent_food_board_secondhalf = food_board_secondhalf;
 
@@ -441,7 +467,7 @@ struct Game {
 
         // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
         while (depth < max_depth) {
-            for (const uint16_t my_move : my_move_board) {
+            for (const uint16_t& my_move : my_move_board) {
                 uint64_t my_food_board_firsthalf = food_board_firsthalf;
                 uint64_t my_food_board_secondhalf = food_board_secondhalf;
 
@@ -449,7 +475,7 @@ struct Game {
                 temp_me.step_by_index(my_move);
                 update_food(temp_me, my_food_board_firsthalf, my_food_board_secondhalf);
 
-                for (const uint16_t opponent_move : opponent_move_board) {
+                for (const uint16_t& opponent_move : opponent_move_board) {
                     uint64_t opponent_food_board_firsthalf = food_board_firsthalf;
                     uint64_t opponent_food_board_secondhalf = food_board_secondhalf;
 
@@ -475,7 +501,6 @@ struct Game {
 
 void benchmark() {
     Game game;
-
     uint16_t my_starting_idx = 12;
     uint16_t opponent_starting_idx = 20; 
     
@@ -503,11 +528,50 @@ void benchmark() {
 }
 
 
+void test() {
+    Game game;
+    uint16_t my_starting_idx = 12;
+    uint16_t opponent_starting_idx = 20;
+
+    uint16_t food[] = {8, 2, 60};
+
+    uint64_t food_board_firsthalf = 0ULL;
+    uint64_t food_board_secondhalf = 0ULL;
+
+    for (uint16_t f : food) {
+        if (f < 64)
+            food_board_firsthalf |= 1ULL << f;
+        else
+            food_board_secondhalf |= 1ULL << (f & 63);
+    }
+
+    game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board_firsthalf, food_board_secondhalf);
+    // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
+
+    game.me.step_by_direction(RIGHT);
+    game.me.step_by_direction(RIGHT);
+
+    // get previous head index 
+    uint16_t prev_head_idx = game.me.body_arr[(game.me.head_idx - 1) & ARR_SIZE];
+    cout << "prev head idx " << prev_head_idx << endl;
+    cout << "dir " << game.me.direction << endl;
+
+    bool wall_collision = precompute_wall_collisions[game.me.direction][prev_head_idx];
+    cout << "wall collision " << wall_collision << endl;
+    
+    game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
+
+    game.check_if_done(game.me, game.food_board_firsthalf, game.food_board_secondhalf);
+    cout << "done " << game.me.done << endl;
+}
+
 int main() {
 
     precomp_moves();
+    precomp_wall_collisions();
     init_direction_lookup();
 
+    // test();
     benchmark();
 
     return 0;
