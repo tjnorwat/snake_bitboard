@@ -124,6 +124,7 @@ struct alignas(64) Player {
         this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; 
 
         // Save current head position
+        // somehow speeds up performance by 20%? could be cache based 
         this->old_head_board_firsthalf = this->snake_head_board_firsthalf;
         this->old_head_board_secondhalf = this->snake_head_board_secondhalf;
 
@@ -138,8 +139,8 @@ struct alignas(64) Player {
             this->snake_head_board_secondhalf = 0ULL;
         }
         else { 
-            this->snake_head_board_secondhalf = 1ULL << (idx & 63);
             this->snake_head_board_firsthalf = 0ULL;
+            this->snake_head_board_secondhalf = 1ULL << (idx & 63);
         }
 
         this->head_idx++;
@@ -258,20 +259,17 @@ struct Game {
         const uint64_t all_boards_firsthalf = me.snake_body_board_firsthalf | opponent.snake_body_board_firsthalf;
         const uint64_t all_boards_secondhalf = me.snake_body_board_secondhalf | opponent.snake_body_board_secondhalf;
 
-        // Update status based on body collisions
         if (me.snake_head_board_firsthalf & all_boards_firsthalf || me.snake_head_board_secondhalf & all_boards_secondhalf)
             me.done = true;
+        else if (me.health <= 0) 
+            me.done = true;
+        
 
         if (opponent.snake_head_board_firsthalf & all_boards_firsthalf || opponent.snake_head_board_secondhalf & all_boards_secondhalf) 
             opponent.done = true;
-        
-
-        // Check health conditions
-        if (me.health <= 0) 
-            me.done = true;
-        
-        if (opponent.health <= 0) 
+        else if (opponent.health <= 0) 
             opponent.done = true;
+        
         
         // if either runs into others head, check which would win 
         if (me.snake_head_board_firsthalf & opponent.snake_head_board_firsthalf || me.snake_body_board_secondhalf & opponent.snake_head_board_secondhalf) {
