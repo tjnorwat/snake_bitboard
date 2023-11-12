@@ -197,104 +197,6 @@ struct Game {
 
     Game(): total_turns(0), food_board_firsthalf(0ULL), food_board_secondhalf(0ULL) {}
 
-    // prints out me, opponent, and food boards
-    void print_board(Player me, Player opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) const {
-        cout << "me length " << me.length << endl;
-        cout << "opponent length " << opponent.length << endl;
-        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-            for (int j = BOARD_SIZE - 1; j >=0; --j) {
-                int idx = i * BOARD_SIZE + j;
-                if (idx < 64) {
-                    uint64_t val = 1ULL << idx;
-                    if (me.snake_head_board_firsthalf & val)
-                        cout << "M ";
-                    else if (me.snake_body_board_firsthalf & val)
-                        cout << "1 ";
-                    else if (opponent.snake_head_board_firsthalf & val)
-                        cout << "O ";
-                    else if (opponent.snake_body_board_firsthalf & val)
-                        cout << "2 ";
-                    else if (food_board_firsthalf & val)
-                        cout << "F ";
-                    else
-                        cout << "| ";
-                }
-                else {
-                    uint64_t val = 1ULL << (idx & 63);
-                    if (me.snake_head_board_secondhalf & val)
-                        cout << "M ";
-                    else if (me.snake_body_board_secondhalf & val)
-                        cout << "1 ";
-                    else if (opponent.snake_head_board_secondhalf & val)
-                        cout << "O ";
-                    else if (opponent.snake_body_board_secondhalf & val)
-                        cout << "2 ";
-                    else if (food_board_secondhalf & val)
-                        cout << "F ";
-                    else
-                        cout << "| ";
-                }
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-
-    void print_individual_board(uint64_t board_firsthalf, uint64_t board_secondhalf) const {
-        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-            for (int j = BOARD_SIZE - 1; j >= 0; --j) {
-                int idx = i * BOARD_SIZE + j;
-                if (idx < 64) {
-                    uint64_t val = 1ULL << idx;
-                    if (board_firsthalf & val)
-                        cout << "1 ";
-                    else
-                        cout << "| ";
-                }
-                else {
-                    uint64_t val = 1ULL << (idx & 63);
-                    if (board_secondhalf & val)
-                        cout << "1 ";
-                    else
-                        cout << "| ";
-                }
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-
-    
-    void print_player_board(Player player) const {
-        cout << "player length " << player.length << endl;
-        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-            for (int j = BOARD_SIZE - 1; j >= 0; --j) {
-                int idx = i * BOARD_SIZE + j;
-                if (idx < 64) {
-                    uint64_t val = 1ULL << idx;
-                    if (player.snake_head_board_firsthalf & val)
-                        cout << "H ";
-                    else if (player.snake_body_board_firsthalf & val)
-                        cout << "B ";
-                    else
-                        cout << "| ";
-                }
-                else {
-                    uint64_t val = 1ULL << (idx & 63);
-                    if (player.snake_head_board_secondhalf & val)
-                        cout << "H ";
-                    else if (player.snake_body_board_secondhalf & val)
-                        cout << "B ";
-                    else
-                        cout << "| ";
-                }
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-
-
     // for the /start endpoint 
     void set_starting_position(uint16_t mysnake_idx, uint16_t opponent_idx, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) {
         this->me = Player(mysnake_idx);
@@ -338,34 +240,39 @@ struct Game {
         }
     }
 
-   // check if we run into wall, ourselves/opponent, or health is 0
-   // can inline this later
-    void check_if_done(Player &player, const uint64_t &all_boards_firsthalf, const uint64_t &all_boards_secondhalf) {
-        if (precompute_wall_collisions[player.direction][player.body_arr[(player.head_idx - 1) & ARR_SIZE]] ||
-            (player.snake_head_board_firsthalf & all_boards_firsthalf) ||
-            (player.snake_head_board_secondhalf & all_boards_secondhalf) ||
-            (player.health <= 0)) {
-            player.done = true;
-        }
-    }
-
     // update if we die
     void update_positions(Player &me, Player &opponent) {
 
-        // TODO : check wall first because if we also run into opponent body when they hit wall, we dont die (still need to implement)
+        // have to do wall collisions first because if we run into wall and opponent runs into our body, only we die 
+        // ex. ran into wall wraps around to other side which could kill other snake
+        if (precompute_wall_collisions[me.direction][me.body_arr[(me.head_idx - 1) & ARR_SIZE]])
+            me.done = true;
 
+        if (precompute_wall_collisions[opponent.direction][opponent.body_arr[(opponent.head_idx - 1) & ARR_SIZE]])
+            opponent.done = true;
+
+        // have to return only after wall collisions (that i know of)
+        if (me.done || opponent.done)
+            return;
 
         const uint64_t all_boards_firsthalf = me.snake_body_board_firsthalf | opponent.snake_body_board_firsthalf;
         const uint64_t all_boards_secondhalf = me.snake_body_board_secondhalf | opponent.snake_body_board_secondhalf;
 
-        this->check_if_done(me, all_boards_firsthalf, all_boards_secondhalf);
-        this->check_if_done(opponent, all_boards_firsthalf, all_boards_secondhalf);
+        // Update status based on body collisions
+        if (me.snake_head_board_firsthalf & all_boards_firsthalf || me.snake_head_board_secondhalf & all_boards_secondhalf)
+            me.done = true;
 
-        // need to check if either snake dies before checking if ran into head; 
-        // ex. ran into wall wraps around to other side which could kill other snake
-        if (me.done || opponent.done)
-            return;
+        if (opponent.snake_head_board_firsthalf & all_boards_firsthalf || opponent.snake_head_board_secondhalf & all_boards_secondhalf) 
+            opponent.done = true;
+        
 
+        // Check health conditions
+        if (me.health <= 0) 
+            me.done = true;
+        
+        if (opponent.health <= 0) 
+            opponent.done = true;
+        
         // if either runs into others head, check which would win 
         if (me.snake_head_board_firsthalf & opponent.snake_head_board_firsthalf || me.snake_body_board_secondhalf & opponent.snake_head_board_secondhalf) {
             if (me.length > opponent.length)
@@ -497,6 +404,102 @@ struct Game {
         cout << "nodes visited " << nodes_visited << endl;
         return best_move;
     }
+
+    // prints out me, opponent, and food boards
+    void print_board(Player me, Player opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) const {
+        cout << "me length " << me.length << endl;
+        cout << "opponent length " << opponent.length << endl;
+        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
+            for (int j = BOARD_SIZE - 1; j >=0; --j) {
+                int idx = i * BOARD_SIZE + j;
+                if (idx < 64) {
+                    uint64_t val = 1ULL << idx;
+                    if (me.snake_head_board_firsthalf & val)
+                        cout << "M ";
+                    else if (me.snake_body_board_firsthalf & val)
+                        cout << "1 ";
+                    else if (opponent.snake_head_board_firsthalf & val)
+                        cout << "O ";
+                    else if (opponent.snake_body_board_firsthalf & val)
+                        cout << "2 ";
+                    else if (food_board_firsthalf & val)
+                        cout << "F ";
+                    else
+                        cout << "| ";
+                }
+                else {
+                    uint64_t val = 1ULL << (idx & 63);
+                    if (me.snake_head_board_secondhalf & val)
+                        cout << "M ";
+                    else if (me.snake_body_board_secondhalf & val)
+                        cout << "1 ";
+                    else if (opponent.snake_head_board_secondhalf & val)
+                        cout << "O ";
+                    else if (opponent.snake_body_board_secondhalf & val)
+                        cout << "2 ";
+                    else if (food_board_secondhalf & val)
+                        cout << "F ";
+                    else
+                        cout << "| ";
+                }
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+
+    void print_individual_board(uint64_t board_firsthalf, uint64_t board_secondhalf) const {
+        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
+            for (int j = BOARD_SIZE - 1; j >= 0; --j) {
+                int idx = i * BOARD_SIZE + j;
+                if (idx < 64) {
+                    uint64_t val = 1ULL << idx;
+                    if (board_firsthalf & val)
+                        cout << "1 ";
+                    else
+                        cout << "| ";
+                }
+                else {
+                    uint64_t val = 1ULL << (idx & 63);
+                    if (board_secondhalf & val)
+                        cout << "1 ";
+                    else
+                        cout << "| ";
+                }
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+
+    void print_player_board(Player player) const {
+        cout << "player length " << player.length << endl;
+        for (int i = BOARD_SIZE - 1; i >= 0; --i) {
+            for (int j = BOARD_SIZE - 1; j >= 0; --j) {
+                int idx = i * BOARD_SIZE + j;
+                if (idx < 64) {
+                    uint64_t val = 1ULL << idx;
+                    if (player.snake_head_board_firsthalf & val)
+                        cout << "H ";
+                    else if (player.snake_body_board_firsthalf & val)
+                        cout << "B ";
+                    else
+                        cout << "| ";
+                }
+                else {
+                    uint64_t val = 1ULL << (idx & 63);
+                    if (player.snake_head_board_secondhalf & val)
+                        cout << "H ";
+                    else if (player.snake_body_board_secondhalf & val)
+                        cout << "B ";
+                    else
+                        cout << "| ";
+                }
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
 };
 
 void benchmark() {
@@ -528,50 +531,12 @@ void benchmark() {
 }
 
 
-void test() {
-    Game game;
-    uint16_t my_starting_idx = 12;
-    uint16_t opponent_starting_idx = 20;
-
-    uint16_t food[] = {8, 2, 60};
-
-    uint64_t food_board_firsthalf = 0ULL;
-    uint64_t food_board_secondhalf = 0ULL;
-
-    for (uint16_t f : food) {
-        if (f < 64)
-            food_board_firsthalf |= 1ULL << f;
-        else
-            food_board_secondhalf |= 1ULL << (f & 63);
-    }
-
-    game.set_starting_position(my_starting_idx, opponent_starting_idx, food_board_firsthalf, food_board_secondhalf);
-    // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
-
-    game.me.step_by_direction(RIGHT);
-    game.me.step_by_direction(RIGHT);
-
-    // get previous head index 
-    uint16_t prev_head_idx = game.me.body_arr[(game.me.head_idx - 1) & ARR_SIZE];
-    cout << "prev head idx " << prev_head_idx << endl;
-    cout << "dir " << game.me.direction << endl;
-
-    bool wall_collision = precompute_wall_collisions[game.me.direction][prev_head_idx];
-    cout << "wall collision " << wall_collision << endl;
-    
-    game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
-
-    game.check_if_done(game.me, game.food_board_firsthalf, game.food_board_secondhalf);
-    cout << "done " << game.me.done << endl;
-}
-
 int main() {
 
     precomp_moves();
     precomp_wall_collisions();
     init_direction_lookup();
 
-    // test();
     benchmark();
 
     return 0;
