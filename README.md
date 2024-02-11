@@ -114,5 +114,11 @@ void step_by_index(uint16_t idx) {
 Here is a comparison of old and new step function, which is a little messier, but worth the performance improvement and we don't have to depend on boost anymore. 
 * 320 ms to 265 ms
 
+**Getting rid of direction**
+
+allowed for 40% speedup by reducing the size of precompute moves array by 4x
+
+
+
 ## Conclusion
 The final timings come into about 27.2 nanoseconds per turn at depth 15, with almost 10 million positions being checked. The minimax evaluation is still a basic implementation, but my goal was to get the main logic to be efficient and then work on heuristics. I would like to be able to switch to MCTS and deep learning for the evaluation and exploration of the game tree.  

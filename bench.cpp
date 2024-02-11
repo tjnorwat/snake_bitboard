@@ -40,36 +40,21 @@ void precomp_wall_collisions() {
 }
 
 // trying to flatten (3d -> 2d array) yields no results 
-vector<uint16_t> precompute_moves[4][BOARD_SIZE * BOARD_SIZE];
+vector<uint16_t> precompute_moves[BOARD_SIZE * BOARD_SIZE];
 // array of precomputed moves based on direction and index of snake head
 // number of moves can vary based on where snake is on the board ex. top left corner/ bottom right corner
 void precomp_moves() {
-    for (uint16_t direction = LEFT; direction <= DOWN; direction++) {
         for (uint16_t i = 0; i < 121; i++) {
-            switch (direction) {
-                case LEFT:
-                    if (i >= BOARD_SIZE) precompute_moves[direction][i].push_back(i - BOARD_SIZE);
-                    if (i < 120) precompute_moves[direction][i].push_back(i + 1);
-                    if (i <= 120 - BOARD_SIZE) precompute_moves[direction][i].push_back(i + BOARD_SIZE);
-                    break;
-                case RIGHT:
-                    if (i >= BOARD_SIZE) precompute_moves[direction][i].push_back(i - BOARD_SIZE);
-                    if (i > 0) precompute_moves[direction][i].push_back(i - 1);
-                    if (i <= 120 - BOARD_SIZE) precompute_moves[direction][i].push_back(i + BOARD_SIZE);
-                    break;
-                case UP:
-                    if (i > 0) precompute_moves[direction][i].push_back(i - 1);
-                    if (i < 120) precompute_moves[direction][i].push_back(i + 1);
-                    if (i <= 120 - BOARD_SIZE) precompute_moves[direction][i].push_back(i + BOARD_SIZE);
-                    break;
-                default:
-                    if (i >= BOARD_SIZE) precompute_moves[direction][i].push_back(i - BOARD_SIZE);
-                    if (i > 0) precompute_moves[direction][i].push_back(i - 1);
-                    if (i < 120) precompute_moves[direction][i].push_back(i + 1);
-                    break;
-            }
+            if ((i + 1) % BOARD_SIZE != 0) // Prevent wrapping to the next row left 
+                precompute_moves[i].push_back(i + 1);
+            if (i % BOARD_SIZE != 0) // Prevent wrapping to the previous row right 
+                precompute_moves[i].push_back(i - 1);
+            if (i < 121 - BOARD_SIZE) // Moving up
+                precompute_moves[i].push_back(i + BOARD_SIZE);
+            if (i >= BOARD_SIZE) // Moving down
+                precompute_moves[i].push_back(i - BOARD_SIZE);
         }
-    }
+    
 }
 
 // using size 11 board for offset 
@@ -85,7 +70,7 @@ void init_direction_lookup() {
 struct alignas(64) Player {
     int16_t health;
     uint16_t length;
-    Direction direction;
+    // Direction direction;
 
     uint64_t old_head_board_firsthalf;
     uint64_t old_head_board_secondhalf;
@@ -104,7 +89,7 @@ struct alignas(64) Player {
 
     Player() {}
 
-    Player(uint16_t starting_idx) : health(100), length(3), direction(UP), snake_head_board_firsthalf(0ULL), snake_head_board_secondhalf(0ULL),
+    Player(uint16_t starting_idx) : health(100), length(3), snake_head_board_firsthalf(0ULL), snake_head_board_secondhalf(0ULL),
         snake_body_board_firsthalf(0ULL), snake_body_board_secondhalf(0ULL), head_idx(2), tail_idx(0), done(false), just_ate_apple(false) {
 
         // snake is 3 long at the start but only occupies 1 spot on the board. 
@@ -121,7 +106,7 @@ struct alignas(64) Player {
     void step_by_index(const uint16_t &idx) {
         // getting new direction before we increment head idx 
         // unordered map and switch statement are worse
-        this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; 
+        // this->direction = direction_lookup[idx - this->body_arr[(this->head_idx) & ARR_SIZE] + BOARD_SIZE]; 
 
         // Save current head position
         // somehow speeds up performance by 20%? could be cache based 
@@ -167,7 +152,7 @@ struct alignas(64) Player {
                 break;
         }
 
-        this->direction = dir;
+        // this->direction = dir;
         this->head_idx++;
         this->body_arr[this->head_idx & ARR_SIZE] = new_idx;
 
@@ -246,11 +231,11 @@ struct Game {
 
         // have to do wall collisions first because if we run into wall and opponent runs into our body, only we die 
         // ex. ran into wall wraps around to other side which could kill other snake
-        if (precompute_wall_collisions[me.direction][me.body_arr[(me.head_idx - 1) & ARR_SIZE]])
-            me.done = true;
+        // if (precompute_wall_collisions[me.body_arr[(me.head_idx - 1) & ARR_SIZE]])
+        //     me.done = true;
 
-        if (precompute_wall_collisions[opponent.direction][opponent.body_arr[(opponent.head_idx - 1) & ARR_SIZE]])
-            opponent.done = true;
+        // if (precompute_wall_collisions[opponent.body_arr[(opponent.head_idx - 1) & ARR_SIZE]])
+        //     opponent.done = true;
 
         // have to return only after wall collisions (that i know of)
         if (me.done || opponent.done)
@@ -313,10 +298,10 @@ struct Game {
 
     int minimax(Player &me, Player &opponent, const uint64_t food_board_firsthalf, const uint64_t food_board_secondhalf, int depth, int alpha, int beta, int &nodes_visited) {
         if (depth == 0 || me.done || opponent.done){
-            if (me.done && opponent.done)
-                return -1000 + depth;
-            if (me.just_ate_apple && opponent.just_ate_apple)
-                return 100 - depth;
+            // if (me.done && opponent.done)
+            //     return -1000 + depth;
+            // if (me.just_ate_apple && opponent.just_ate_apple)
+            //     return 100 - depth;
 
             return evaluate(me, opponent, depth);
         }
@@ -324,8 +309,8 @@ struct Game {
         int best_max_score = INT32_MIN;
         int best_min_score = INT32_MAX;
 
-        const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & ARR_SIZE]];
-        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & ARR_SIZE]];
+        const vector<uint16_t>& my_move_board = precompute_moves[me.body_arr[me.head_idx & ARR_SIZE]];
+        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.body_arr[opponent.head_idx & ARR_SIZE]];
 
         for (const uint16_t& my_move : my_move_board) {
             uint64_t my_food_board_firsthalf = food_board_firsthalf;
@@ -351,8 +336,8 @@ struct Game {
                 alpha = max(alpha, best_max_score);
                 beta = min(beta, best_min_score);
 
-                if (alpha >= beta)
-                    break;
+                // if (alpha >= beta)
+                //     break;
             }
         }
         return best_max_score;
@@ -367,8 +352,8 @@ struct Game {
         auto start_time = chrono::high_resolution_clock::now();
         int nodes_visited = 0;
 
-        const vector<uint16_t>& my_move_board = precompute_moves[me.direction][me.body_arr[me.head_idx & ARR_SIZE]];
-        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.direction][opponent.body_arr[opponent.head_idx & ARR_SIZE]];
+        const vector<uint16_t>& my_move_board = precompute_moves[me.body_arr[me.head_idx & ARR_SIZE]];
+        const vector<uint16_t>& opponent_move_board = precompute_moves[opponent.body_arr[opponent.head_idx & ARR_SIZE]];
 
         // while (chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - start_time).count() < 50 && depth < max_depth) {
         while (depth < max_depth) {
@@ -521,7 +506,7 @@ void benchmark() {
     // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
 
     auto start_time = chrono::high_resolution_clock::now();
-    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf, 15);
+    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf, 8);
 
     auto end_time = chrono::high_resolution_clock::now();
     double time_taken = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
