@@ -1,6 +1,6 @@
 # CXX = g++
 CXX = clang++
-CXXFLAGS = -O3 -march=native
+CXXFLAGS = -O3 -march=native -mtune=native
 
 # for crow.cpp
 # LIBS = -lpthread
