@@ -50,10 +50,11 @@ struct alignas(64) Player {
     uint16_t health;
 
     bool done;
+    bool just_ate_apple;
 
 
     Player() : health(100), snake_head_board(0ULL, 0ULL),
-               snake_body_board(0ULL, 0ULL), head_idx(2), tail_idx(0), done(false) {}
+               snake_body_board(0ULL, 0ULL), head_idx(2), tail_idx(0), done(false), just_ate_apple(false) {}
 
     Player(uint16_t starting_idx) : Player() {
         // Initialize player position
@@ -85,17 +86,10 @@ struct alignas(64) Player {
 
         this->head_idx++;
         this->body_arr[this->head_idx & ARR_SIZE] = idx;
-
-        if (this->body_arr[this->tail_idx & ARR_SIZE] < 64)
-            this->snake_body_board.first ^= 1ULL << this->body_arr[this->tail_idx & ARR_SIZE];
-        else
-            this->snake_body_board.second ^= 1ULL << this->body_arr[this->tail_idx & ARR_SIZE];
-        
-        this->tail_idx++;
     }
 
     inline uint16_t get_length() {
-        return this->head_idx - this->tail_idx + 1;
+        return this->head_idx - this->tail_idx;
     }
 };
 
@@ -120,15 +114,33 @@ struct Game {
             // remove food from board ; one of the head boards will always be 0
             food_board.first ^= player.snake_head_board.first;
             food_board.second ^= player.snake_head_board.second;
+            
+            // player.length++;
+            // if we didnt eat an apple last move, we remove tail
+            if (!player.just_ate_apple) { 
+                player.health = 100;
 
-            player.tail_idx--;
-            if (player.body_arr[player.tail_idx & ARR_SIZE] < 64)
-                player.snake_body_board.first |= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
-            else
-                player.snake_body_board.second |= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
+                if (player.body_arr[player.tail_idx & ARR_SIZE] < 64)
+                    player.snake_body_board.first ^= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
+                else
+                    player.snake_body_board.second ^= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
+                
+                player.tail_idx++;
+            }
+            player.just_ate_apple = true;
         }
         else {
             player.health--;
+            // if we didnt eat an apple last move, we remove tail
+            if (!player.just_ate_apple) {
+                if (player.body_arr[player.tail_idx & ARR_SIZE] < 64)
+                    player.snake_body_board.first ^= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
+                else
+                    player.snake_body_board.second ^= 1ULL << player.body_arr[player.tail_idx & ARR_SIZE];
+
+                player.tail_idx++;
+            }
+            player.just_ate_apple = false;
         }
         return food_board;
     }
@@ -169,8 +181,11 @@ struct Game {
 
     int minimax(Player &me, Player &opponent, pair<uint64_t, uint64_t> &food_board, int depth, int alpha, int beta, int &nodes_visited) {
         if (depth == 0 || me.done || opponent.done){
-            if (depth == 0)
-                print_board(me, opponent, food_board);
+            // if (me.done && opponent.done)
+            //     return -1000 + depth;
+            // if (me.just_ate_apple && opponent.just_ate_apple)
+            //     return 100 - depth;
+
             return evaluate(me, opponent, depth);
         }
 
@@ -260,7 +275,7 @@ struct Game {
     }
 
     // prints out me, opponent, and food boards
-    void print_board(Player me, Player opponent, pair<uint64_t, uint64_t> food_board) const {
+    void print_board(Player me, Player opponent, uint64_t food_board_firsthalf, uint64_t food_board_secondhalf) const {
         cout << "me length " << me.get_length() << endl;
         cout << "opponent length " << opponent.get_length() << endl;
         for (int i = BOARD_SIZE - 1; i >= 0; --i) {
@@ -276,7 +291,7 @@ struct Game {
                         cout << "O ";
                     else if (opponent.snake_body_board.first & val)
                         cout << "2 ";
-                    else if (food_board.first & val)
+                    else if (food_board_firsthalf & val)
                         cout << "F ";
                     else
                         cout << "| ";
@@ -291,7 +306,7 @@ struct Game {
                         cout << "O ";
                     else if (opponent.snake_body_board.second & val)
                         cout << "2 ";
-                    else if (food_board.second & val)
+                    else if (food_board_secondhalf & val)
                         cout << "F ";
                     else
                         cout << "| ";
@@ -376,7 +391,7 @@ void benchmark() {
     // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
 
     auto start_time = chrono::high_resolution_clock::now();
-    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 5);
+    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 8);
 
     auto end_time = chrono::high_resolution_clock::now();
     double time_taken = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
