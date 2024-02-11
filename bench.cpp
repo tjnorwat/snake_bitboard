@@ -169,8 +169,6 @@ struct Game {
 
     int minimax(Player &me, Player &opponent, pair<uint64_t, uint64_t> &food_board, int depth, int alpha, int beta, int &nodes_visited) {
         if (depth == 0 || me.done || opponent.done){
-            if (depth == 0)
-                print_board(me, opponent, food_board);
             return evaluate(me, opponent, depth);
         }
 
@@ -376,7 +374,7 @@ void benchmark() {
     // game.print_board(game.me, game.opponent, game.food_board_firsthalf, game.food_board_secondhalf);
 
     auto start_time = chrono::high_resolution_clock::now();
-    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 5);
+    uint16_t move = game.find_best_move(game.me, game.opponent, game.food_board, 8);
 
     auto end_time = chrono::high_resolution_clock::now();
     double time_taken = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
