@@ -58,7 +58,7 @@ struct alignas(64) Player {
     pairU64 snake_head_board;
     pairU64 snake_body_board;
 
-    U16 body_arr[ARR_SIZE] = {0};
+    uint8_t body_arr[ARR_SIZE] = {0};
     U16 head_idx;
     U16 tail_idx;
     U16 health;
@@ -163,7 +163,7 @@ struct Game {
             opponent.done = true;
         
         // if either runs into others head, check which would win 
-        if (me.snake_head_board.first & opponent.snake_head_board.first || me.snake_body_board.second & opponent.snake_head_board.second) {
+        if (me.snake_head_board.first & opponent.snake_head_board.first || me.snake_head_board.second & opponent.snake_head_board.second) {
             if (me.get_length() > opponent.get_length())
                 opponent.done = true;
             else if (me.get_length() < opponent.get_length())
